@@ -5,11 +5,12 @@ services:
     container_name: crowdsec-dashboard
     restart: unless-stopped
     networks:
-      - traefik-cloudflare-tunnel_default
+      - traefik_cloudflared_default
       - apprise_default
+    env_file:
+      - .env
     environment:
       CROWDSEC_URL: http://crowdsec:8080
-      CROWDSEC_API_KEY: "REPLACE_WITH_YOUR_API_KEY"
       POLL_INTERVAL: "30"
       NOTIFY_ON_BAN: "true"
       NOTIFY_ON_ALERT: "true"
@@ -32,7 +33,7 @@ services:
       start_period: 10s
 
 networks:
-  traefik-cloudflare-tunnel_default:
+  traefik_cloudflared_default:
     external: true
   apprise_default:
     external: true

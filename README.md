@@ -1,12 +1,14 @@
 # CrowdSec Dashboard
 
-A modern, lightweight web dashboard for CrowdSec built with Svelte 5 and Flask.
+A modern, lightweight web dashboard for CrowdSec with Apple-inspired design, built with vanilla JavaScript and Flask.
 
 ## Features
 
 - **Real-time monitoring** - Active bans, alerts, and event timeline
 - **Smart notifications** - Apprise integration with threshold filtering and IP cooldowns
-- **Modern UI** - Apple-inspired design with Svelte 5
+- **Apple-inspired UI** - Modern dark theme with smooth animations
+- **Authentication** - Username/password or Auth0 SSO with password management
+- **Tooltips** - Helpful explanations for non-technical users
 - **API or Embedded mode** - Use external Apprise API or built-in notifications
 - **Connection management** - Test and monitor connections from UI
 - **One-click unban** - Remove decisions directly from dashboard
@@ -21,75 +23,54 @@ docker exec crowdsec cscli bouncers add crowdsec-dashboard
 
 Copy the generated API key.
 
-### 2. Deploy with Docker Compose
-
-Add to your existing `docker-compose.yml`:
-
-```yaml
-services:
-  crowdsec-dashboard:
-    build:
-      context: .
-    container_name: crowdsec-dashboard
-    restart: unless-stopped
-    networks:
-      - traefik-cloudflare-tunnel_default
-      - apprise_default
-    environment:
-      CROWDSEC_URL: http://crowdsec:8080
-      CROWDSEC_API_KEY: "YOUR_API_KEY"
-      APPRISE_API_URL: "http://apprise:8000"
-      UNSECURE: "true"
-    ports:
-      - "5000:5000"
-
-networks:
-  traefik-cloudflare-tunnel_default:
-    external: true
-  apprise_default:
-    external: true
-```
-
-### 3. Build and Run
+### 2. Create Environment File
 
 ```bash
-docker compose up -d --build crowdsec-dashboard
+cp .env.example .env
+```
+
+Edit `.env` with your settings:
+
+```env
+# CrowdSec Configuration
+CROWDSEC_API_KEY=your_api_key_here
+
+# Authentication (choose one)
+# Option 1: Username/Password
+AUTH_USERNAME=admin
+AUTH_PASSWORD=your_secure_password
+
+# Option 2: Auth0 (disables password login)
+# AUTH0_DOMAIN=your-tenant.auth0.com
+# AUTH0_CLIENT_ID=your_client_id
+# AUTH0_CLIENT_SECRET=your_client_secret
+```
+
+### 3. Deploy with Docker Compose
+
+```bash
+docker compose up -d --build
 ```
 
 Open http://localhost:5000
 
-## Development
+## Authentication
 
-### Prerequisites
+The dashboard supports two authentication methods:
 
-- Node.js 20+
-- Python 3.12+
+### Username/Password
 
-### Setup
+Set `AUTH_USERNAME` and `AUTH_PASSWORD` in your `.env` file. Users can change their password from the Settings tab.
 
-```bash
-# Install frontend dependencies
-npm install
+### Auth0 SSO
 
-# Install backend dependencies
-pip install -r requirements.txt
+When Auth0 is configured, password login is automatically disabled. Users authenticate via Auth0's hosted login page.
 
-# Run development server (frontend + backend proxy)
-npm run dev
-
-# In another terminal, run backend
-python app.py
-```
-
-### Build
-
-```bash
-# Build frontend only
-npm run build
-
-# Build Docker image
-docker build -t crowdsec-dashboard .
-```
+To set up Auth0:
+1. Create a Single Page Application in Auth0
+2. Add your domain to Allowed Callback URLs: `https://your-domain/callback`
+3. Add your domain to Allowed Logout URLs and Allowed Web Origins
+4. Set the environment variables in `.env`
 
 ## Configuration
 
@@ -99,10 +80,15 @@ docker build -t crowdsec-dashboard .
 |----------|---------|-------------|
 | `CROWDSEC_URL` | `http://crowdsec:8080` | CrowdSec LAPI URL |
 | `CROWDSEC_API_KEY` | - | Bouncer API key (required) |
+| `AUTH_USERNAME` | - | Login username |
+| `AUTH_PASSWORD` | - | Login password |
+| `AUTH0_DOMAIN` | - | Auth0 tenant domain |
+| `AUTH0_CLIENT_ID` | - | Auth0 application client ID |
+| `AUTH0_CLIENT_SECRET` | - | Auth0 application client secret |
 | `APPRISE_API_URL` | - | External Apprise API URL |
 | `APPRISE_API_KEY` | - | Apprise API authentication key |
 | `APPRISE_CONFIG_KEY` | `crowdsec-dashboard` | Config key in Apprise API |
-| `APPRISE_URLS` | - | Comma-separated Apprise URLs (embedded mode) |
+| `APPRISE_URLS` | - | Comma-separated Apprise URLs |
 | `POLL_INTERVAL` | `30` | Seconds between polls |
 | `NOTIFY_ON_BAN` | `true` | Send ban notifications |
 | `NOTIFY_ON_ALERT` | `true` | Send alert notifications |
@@ -110,32 +96,38 @@ docker build -t crowdsec-dashboard .
 | `BAN_THRESHOLD` | `0` | Minimum events for ban notification |
 | `NOTIFY_COOLDOWN` | `3600` | Seconds before re-notifying same IP |
 | `DIGEST_INTERVAL` | `0` | Batch interval (0 = immediate) |
-| `UNSECURE` | `false` | Allow direct port access |
 | `LOG_LEVEL` | `INFO` | Logging level |
 
 ## Project Structure
 
 ```
 crowdsec-dashboard/
-├── src/                    # Svelte frontend source
-│   ├── components/         # UI components
-│   ├── lib/                # API client and stores
-│   ├── App.svelte          # Main app component
-│   ├── app.css             # Global styles
-│   ├── main.js             # Entry point
-│   └── index.html          # HTML template
-├── static/                 # Built frontend (generated)
-├── public/                 # Static assets
-├── app.py                  # Flask backend
+├── app.py                  # Flask backend with auth
+├── static/
+│   ├── index.html          # Main HTML with login overlay
+│   ├── app.js              # Frontend logic with auth
+│   └── style.css           # Apple-style dark theme
+├── Dockerfile              # Python slim image
+├── docker-compose.yml      # Container orchestration
+├── .env.example            # Environment template
 ├── requirements.txt        # Python dependencies
-├── package.json            # Node.js dependencies
-├── vite.config.js          # Vite configuration
-├── svelte.config.js        # Svelte configuration
-├── Dockerfile              # Multi-stage Docker build
-└── docker-compose.yml      # Docker Compose config
+├── PLAN.md                 # Development roadmap
+└── README.md               # This file
 ```
 
 ## API Endpoints
+
+### Authentication
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/auth/status` | Check auth configuration |
+| `POST` | `/api/auth/login` | Login with credentials or Auth0 |
+| `POST` | `/api/auth/logout` | End session |
+| `GET` | `/api/auth/check` | Verify authentication |
+| `POST` | `/api/auth/password` | Change password (credentials only) |
+
+### Data
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -152,6 +144,15 @@ crowdsec-dashboard/
 | `POST` | `/api/system/test` | Test connections |
 | `GET` | `/health` | Health check |
 
+## Decision Tooltips
+
+The dashboard provides helpful tooltips for non-technical users:
+
+- **Type**: Explains ban vs captcha vs throttle actions
+- **Scenario**: Describes what attack pattern was detected
+- **Origin**: Shows where the decision came from (CrowdSec, manual, lists)
+- **Duration**: How long the block will remain active
+
 ## Apprise URLs
 
 | Service | Format |
@@ -163,6 +164,41 @@ crowdsec-dashboard/
 | Email | `mailto://user:pass@host` |
 
 See [Apprise Wiki](https://github.com/caronc/apprise/wiki) for 80+ services.
+
+## Development
+
+### Prerequisites
+
+- Python 3.12+
+- Docker (for deployment)
+
+### Local Development
+
+```bash
+# Install backend dependencies
+pip install -r requirements.txt
+
+# Create .env file
+cp .env.example .env
+
+# Run backend
+python app.py
+```
+
+Open http://localhost:5000
+
+### Build Docker Image
+
+```bash
+docker build -t crowdsec-dashboard .
+```
+
+## Security Notes
+
+- Passwords are stored in a file (`/app/.auth_password`) when changed at runtime
+- Sessions use HTTP-only cookies with 24-hour expiry
+- Auth0 integration disables password-based login
+- `.env` file should never be committed to version control
 
 ## License
 
