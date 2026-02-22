@@ -1,0 +1,38 @@
+services:
+  crowdsec-dashboard:
+    build:
+      context: .
+    container_name: crowdsec-dashboard
+    restart: unless-stopped
+    networks:
+      - traefik-cloudflare-tunnel_default
+      - apprise_default
+    environment:
+      CROWDSEC_URL: http://crowdsec:8080
+      CROWDSEC_API_KEY: "REPLACE_WITH_YOUR_API_KEY"
+      POLL_INTERVAL: "30"
+      NOTIFY_ON_BAN: "true"
+      NOTIFY_ON_ALERT: "true"
+      ALERT_THRESHOLD: "5"
+      BAN_THRESHOLD: "0"
+      NOTIFY_COOLDOWN: "3600"
+      DIGEST_INTERVAL: "0"
+      APPRISE_API_URL: "http://apprise:8000"
+      APPRISE_API_KEY: ""
+      APPRISE_CONFIG_KEY: "crowdsec-dashboard"
+      UNSECURE: "true"
+      LOG_LEVEL: "INFO"
+    ports:
+      - "5000:5000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:5000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+networks:
+  traefik-cloudflare-tunnel_default:
+    external: true
+  apprise_default:
+    external: true

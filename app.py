@@ -1,0 +1,627 @@
+#!/usr/bin/env python3
+"""
+CrowdSec Dashboard - Backend API
+Reads from CrowdSec LAPI and sends notifications via Apprise.
+Supports runtime-configurable thresholds, cooldowns, and digest mode.
+Supports both embedded Apprise and external Apprise API.
+"""
+
+import os
+import json
+import logging
+import threading
+import time
+from datetime import datetime, timedelta
+from collections import deque
+
+import requests
+import apprise
+from flask import Flask, jsonify, request, send_from_directory
+from flask_cors import CORS
+
+# ---------------------------------------------------------------------------
+# Boot-time config (from env)
+# ---------------------------------------------------------------------------
+CROWDSEC_URL       = os.getenv("CROWDSEC_URL", "http://crowdsec:8080")
+CROWDSEC_API_KEY   = os.getenv("CROWDSEC_API_KEY", "")
+APPRISE_URLS       = os.getenv("APPRISE_URLS", "")
+POLL_INTERVAL      = int(os.getenv("POLL_INTERVAL", "30"))
+LOG_LEVEL          = os.getenv("LOG_LEVEL", "INFO")
+UNSECURE           = os.getenv("UNSECURE", "false").lower() == "true"
+APPRISE_API_URL    = os.getenv("APPRISE_API_URL", "")
+APPRISE_API_KEY    = os.getenv("APPRISE_API_KEY", "")
+APPRISE_CONFIG_KEY = os.getenv("APPRISE_CONFIG_KEY", "crowdsec-dashboard")
+
+logging.basicConfig(
+    level=getattr(logging, LOG_LEVEL),
+    format="%(asctime)s %(levelname)s %(message)s",
+)
+log = logging.getLogger(__name__)
+
+app = Flask(__name__, static_folder="static")
+CORS(app)
+
+# ---------------------------------------------------------------------------
+# Runtime config — editable via /api/config without restart
+# ---------------------------------------------------------------------------
+cfg = {
+    "notify_on_ban":      os.getenv("NOTIFY_ON_BAN", "true").lower() == "true",
+    "notify_on_alert":    os.getenv("NOTIFY_ON_ALERT", "true").lower() == "true",
+    # Alert threshold: only notify if events_count >= N  (0 = always)
+    "alert_threshold":    int(os.getenv("ALERT_THRESHOLD", "5")),
+    # Ban threshold: only notify ban if the associated alert had >= N events (0 = always)
+    "ban_threshold":      int(os.getenv("BAN_THRESHOLD", "0")),
+    # Cooldown (seconds): suppress re-notifications for same IP within window
+    "notify_cooldown":    int(os.getenv("NOTIFY_COOLDOWN", "3600")),
+    # Digest interval (seconds): 0 = immediate, >0 = batch and send every N sec
+    "digest_interval":    int(os.getenv("DIGEST_INTERVAL", "0")),
+    # Apprise URLs (runtime override)
+    "apprise_urls":       os.getenv("APPRISE_URLS", ""),
+}
+
+# ---------------------------------------------------------------------------
+# In-memory state
+# ---------------------------------------------------------------------------
+state = {
+    "decisions":           [],
+    "alerts":              [],
+    "metrics":             {},
+    "last_poll":           None,
+    "poll_errors":         0,
+    "known_decision_ids":  set(),
+    "known_alert_ids":     set(),
+    "events":              deque(maxlen=500),
+    "cooldowns":           {},
+    "suppressed_count":    0,
+    "sent_count":          0,
+    "digest_buffer":       [],
+    "last_digest_sent":    time.time(),
+}
+
+# ---------------------------------------------------------------------------
+# Notification logic
+# ---------------------------------------------------------------------------
+
+def _get_apprise_urls():
+    if APPRISE_API_URL:
+        return []
+    urls_str = cfg["apprise_urls"] or APPRISE_URLS
+    return [u.strip() for u in urls_str.split(",") if u.strip()]
+
+def _apprise_api_headers():
+    headers = {"Content-Type": "application/json"}
+    if APPRISE_API_KEY:
+        headers["Authorization"] = f"Bearer {APPRISE_API_KEY}"
+    return headers
+
+def _apprise_api_get_urls():
+    if not APPRISE_API_URL:
+        return []
+    try:
+        r = requests.get(
+            f"{APPRISE_API_URL}/get/{APPRISE_CONFIG_KEY}",
+            headers=_apprise_api_headers(),
+            timeout=5,
+        )
+        if r.status_code == 200:
+            data = r.json()
+            if data.get("urls"):
+                return data["urls"]
+    except Exception as e:
+        log.debug("Apprise API get URLs error: %s", e)
+    return []
+
+def _apprise_api_set_urls(urls):
+    if not APPRISE_API_URL:
+        return False
+    try:
+        r = requests.post(
+            f"{APPRISE_API_URL}/add/{APPRISE_CONFIG_KEY}",
+            headers=_apprise_api_headers(),
+            json={"urls": urls},
+            timeout=5,
+        )
+        return r.status_code in (200, 201, 204)
+    except Exception as e:
+        log.error("Apprise API set URLs error: %s", e)
+        return False
+
+def _apprise_api_notify(title, body):
+    if not APPRISE_API_URL:
+        return False
+    try:
+        r = requests.post(
+            f"{APPRISE_API_URL}/notify/{APPRISE_CONFIG_KEY}",
+            headers=_apprise_api_headers(),
+            json={"title": title, "body": body, "type": "info"},
+            timeout=10,
+        )
+        ok = r.status_code == 200
+        log.info("Apprise API notify '%s' -> %s", title, "ok" if ok else "FAIL")
+        return ok
+    except Exception as e:
+        log.error("Apprise API notify error: %s", e)
+        return False
+
+def _send_now(title, body):
+    if APPRISE_API_URL:
+        ok = _apprise_api_notify(title, body)
+        if ok:
+            state["sent_count"] += 1
+        return ok
+    
+    urls = _get_apprise_urls()
+    if not urls:
+        log.debug("No Apprise URLs configured, skipping.")
+        return False
+    ap = apprise.Apprise()
+    for url in urls:
+        ap.add(url)
+    ok = ap.notify(title=title, body=body)
+    log.info("Notification '%s' -> %s", title, "ok" if ok else "FAIL")
+    state["sent_count"] += 1
+    return ok
+
+def send_notification(title, body, ip=None):
+    now = time.time()
+    if ip and cfg["notify_cooldown"] > 0:
+        last = state["cooldowns"].get(ip, 0)
+        if now - last < cfg["notify_cooldown"]:
+            log.debug("Suppressed notification for %s (cooldown)", ip)
+            state["suppressed_count"] += 1
+            state["events"].appendleft({
+                "time": datetime.utcnow().isoformat() + "Z",
+                "type": "suppressed",
+                "msg": f"🔇 Notifica soppressa (cooldown {cfg['notify_cooldown']}s) per {ip}",
+                "data": {},
+            })
+            return
+        state["cooldowns"][ip] = now
+
+    if cfg["digest_interval"] > 0:
+        state["digest_buffer"].append((title, body))
+        log.debug("Buffered for digest: %s", title)
+        return
+
+    _send_now(title, body)
+
+
+def digest_loop():
+    while True:
+        time.sleep(5)
+        interval = cfg["digest_interval"]
+        if interval <= 0:
+            continue
+        now = time.time()
+        if now - state["last_digest_sent"] < interval:
+            continue
+        buf = state["digest_buffer"][:]
+        if not buf:
+            state["last_digest_sent"] = now
+            continue
+        state["digest_buffer"].clear()
+        state["last_digest_sent"] = now
+        if len(buf) == 1:
+            _send_now(buf[0][0], buf[0][1])
+        else:
+            lines = "\n\n".join(f"▸ {t}\n{b}" for t, b in buf)
+            _send_now(f"CrowdSec Digest — {len(buf)} eventi", lines)
+        log.info("Digest sent: %d notifications", len(buf))
+
+# ---------------------------------------------------------------------------
+# CrowdSec LAPI helpers
+# ---------------------------------------------------------------------------
+def cs_headers():
+    return {"X-Api-Key": CROWDSEC_API_KEY, "Accept": "application/json"}
+
+def fetch_decisions():
+    try:
+        r = requests.get(f"{CROWDSEC_URL}/v1/decisions", headers=cs_headers(), timeout=10)
+        if r.status_code == 200:
+            return r.json() or []
+        log.warning("GET /v1/decisions -> %s", r.status_code)
+    except Exception as e:
+        log.error("fetch_decisions: %s", e)
+    return None
+
+def fetch_alerts(since_minutes=120):
+    try:
+        since = (datetime.utcnow() - timedelta(minutes=since_minutes)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        r = requests.get(
+            f"{CROWDSEC_URL}/v1/alerts",
+            headers=cs_headers(),
+            params={"since": since},
+            timeout=10,
+        )
+        if r.status_code == 200:
+            return r.json() or []
+        log.warning("GET /v1/alerts -> %s", r.status_code)
+    except Exception as e:
+        log.error("fetch_alerts: %s", e)
+    return None
+
+def fetch_metrics():
+    try:
+        r = requests.get(f"{CROWDSEC_URL}/metrics", timeout=10)
+        if r.status_code == 200:
+            metrics = {}
+            for line in r.text.splitlines():
+                if line.startswith("#") or not line.strip():
+                    continue
+                parts = line.split(" ")
+                if len(parts) >= 2:
+                    key = parts[0].split("{")[0]
+                    try:
+                        metrics[key] = float(parts[-1])
+                    except ValueError:
+                        pass
+            return metrics
+    except Exception as e:
+        log.debug("fetch_metrics: %s", e)
+    return {}
+
+# ---------------------------------------------------------------------------
+# Poll loop
+# ---------------------------------------------------------------------------
+def poll_loop():
+    log.info("Poller started (interval=%ds)", POLL_INTERVAL)
+    while True:
+        try:
+            _do_poll()
+        except Exception as e:
+            log.exception("Poll loop error: %s", e)
+            state["poll_errors"] += 1
+        time.sleep(POLL_INTERVAL)
+
+def _do_poll():
+    now_str = datetime.utcnow().isoformat() + "Z"
+    state["last_poll"] = now_str
+
+    # --- Decisions ---
+    decisions = fetch_decisions()
+    if decisions is not None:
+        new_ids = {str(d.get("id", "")) for d in decisions}
+        added   = new_ids - state["known_decision_ids"]
+        removed = state["known_decision_ids"] - new_ids
+
+        for d in decisions:
+            if str(d.get("id", "")) in added:
+                ip       = d.get("value", "?")
+                scenario = d.get("scenario", "?")
+                dtype    = d.get("type", "?")
+                origin   = d.get("origin", "?")
+                msg = f"🚫 BAN {ip} [{dtype}] via {origin} — {scenario}"
+                state["events"].appendleft({"time": now_str, "type": "ban", "msg": msg, "data": d})
+
+                if cfg["notify_on_ban"]:
+                    ban_thr = cfg["ban_threshold"]
+                    event_count = _find_alert_count(ip, scenario)
+                    if ban_thr > 0 and event_count < ban_thr:
+                        log.debug("Ban notify suppressed: %s events < threshold %s", event_count, ban_thr)
+                        state["suppressed_count"] += 1
+                        state["events"].appendleft({
+                            "time": now_str, "type": "suppressed",
+                            "msg": f"🔇 Ban soppresso ({event_count} eventi < soglia {ban_thr}): {ip}",
+                            "data": {},
+                        })
+                    else:
+                        send_notification(
+                            title=f"🚫 CrowdSec Ban: {ip}",
+                            body=f"Scenario: {scenario}\nTipo: {dtype}\nOrigine: {origin}\nScade: {d.get('until','?')}",
+                            ip=ip,
+                        )
+
+        for rid in removed:
+            state["events"].appendleft({
+                "time": now_str, "type": "unban",
+                "msg": f"✅ UNBAN decisione id={rid}", "data": {},
+            })
+
+        state["decisions"] = decisions
+        state["known_decision_ids"] = new_ids
+
+    # --- Alerts ---
+    alerts = fetch_alerts(since_minutes=120)
+    if alerts is not None:
+        new_alert_ids = {str(a.get("id", "")) for a in alerts}
+        added_alerts  = new_alert_ids - state["known_alert_ids"]
+
+        for a in alerts:
+            if str(a.get("id", "")) in added_alerts:
+                scenario = a.get("scenario", "?")
+                ip       = (a.get("source") or {}).get("ip", "?")
+                count    = a.get("events_count", 0)
+                msg = f"⚠️ ALERT {ip} scenario={scenario} events={count}"
+                state["events"].appendleft({"time": now_str, "type": "alert", "msg": msg, "data": a})
+
+                if cfg["notify_on_alert"]:
+                    thr = cfg["alert_threshold"]
+                    if thr > 0 and count < thr:
+                        log.debug("Alert suppressed: %s events < threshold %s", count, thr)
+                        state["suppressed_count"] += 1
+                        state["events"].appendleft({
+                            "time": now_str, "type": "suppressed",
+                            "msg": f"🔇 Alert soppresso ({count} eventi < soglia {thr}): {ip}",
+                            "data": {},
+                        })
+                    else:
+                        send_notification(
+                            title=f"⚠️ CrowdSec Alert: {scenario}",
+                            body=f"IP: {ip}\nEventi: {count}\nMessaggio: {a.get('message','')}",
+                            ip=ip,
+                        )
+
+        state["known_alert_ids"] = new_alert_ids
+        state["alerts"] = alerts[:100]
+
+    # --- Metrics ---
+    state["metrics"] = fetch_metrics()
+    _prune_cooldowns()
+
+def _find_alert_count(ip, scenario):
+    for a in state["alerts"]:
+        a_ip = (a.get("source") or {}).get("ip", "")
+        if a_ip == ip and a.get("scenario", "") == scenario:
+            return a.get("events_count", 0)
+    return 0
+
+def _prune_cooldowns():
+    cutoff = time.time() - cfg["notify_cooldown"] * 2
+    state["cooldowns"] = {k: v for k, v in state["cooldowns"].items() if v > cutoff}
+
+# ---------------------------------------------------------------------------
+# REST API
+# ---------------------------------------------------------------------------
+@app.route("/api/status")
+def api_status():
+    next_digest = None
+    if cfg["digest_interval"] > 0:
+        elapsed = time.time() - state["last_digest_sent"]
+        next_digest = max(0, int(cfg["digest_interval"] - elapsed))
+    
+    apprise_mode = "api" if APPRISE_API_URL else "embedded"
+    apprise_configured = False
+    if APPRISE_API_URL:
+        apprise_configured = bool(_apprise_api_get_urls())
+    else:
+        apprise_configured = bool(_get_apprise_urls())
+    
+    return jsonify({
+        "last_poll":          state["last_poll"],
+        "poll_errors":        state["poll_errors"],
+        "poll_interval":      POLL_INTERVAL,
+        "crowdsec_url":       CROWDSEC_URL,
+        "apprise_mode":       apprise_mode,
+        "apprise_api_url":    APPRISE_API_URL,
+        "apprise_configured": apprise_configured,
+        "unsecure_mode":      UNSECURE,
+        "total_bans":         len(state["decisions"]),
+        "total_alerts":       len(state["alerts"]),
+        "sent_count":         state["sent_count"],
+        "suppressed_count":   state["suppressed_count"],
+        "digest_pending":     len(state["digest_buffer"]),
+        "next_digest_in":     next_digest,
+        "cooldowns_tracked":  len(state["cooldowns"]),
+    })
+
+@app.route("/api/config", methods=["GET"])
+def api_config_get():
+    return jsonify(cfg)
+
+@app.route("/api/config", methods=["PATCH"])
+def api_config_patch():
+    data = request.get_json(force=True, silent=True) or {}
+    allowed = {"notify_on_ban", "notify_on_alert", "alert_threshold",
+               "ban_threshold", "notify_cooldown", "digest_interval", "apprise_urls"}
+    updated = {}
+    for key, val in data.items():
+        if key not in allowed:
+            continue
+        if key in ("alert_threshold", "ban_threshold", "notify_cooldown", "digest_interval"):
+            val = int(val)
+        elif key in ("notify_on_ban", "notify_on_alert"):
+            val = bool(val)
+        cfg[key] = val
+        updated[key] = val
+    log.info("Config updated: %s", updated)
+    return jsonify({"ok": True, "updated": updated, "config": cfg})
+
+@app.route("/api/decisions")
+def api_decisions():
+    q = request.args.get("q", "").lower()
+    data = state["decisions"]
+    if q:
+        data = [d for d in data if q in json.dumps(d).lower()]
+    return jsonify(data)
+
+@app.route("/api/alerts")
+def api_alerts():
+    q = request.args.get("q", "").lower()
+    data = state["alerts"]
+    if q:
+        data = [a for a in data if q in json.dumps(a).lower()]
+    return jsonify(data)
+
+@app.route("/api/events")
+def api_events():
+    limit = int(request.args.get("limit", 60))
+    ftype = request.args.get("type", "")
+    data  = list(state["events"])
+    if ftype:
+        data = [e for e in data if e.get("type") == ftype]
+    return jsonify(data[:limit])
+
+@app.route("/api/metrics")
+def api_metrics():
+    return jsonify(state["metrics"])
+
+@app.route("/api/test-notify", methods=["POST"])
+def api_test_notify():
+    _send_now("CrowdSec Dashboard — Test 🛡️", "Notifica di test funzionante!\nSoglie configurate correttamente.")
+    return jsonify({"ok": True})
+
+@app.route("/api/apprise/status")
+def api_apprise_status():
+    if APPRISE_API_URL:
+        try:
+            r = requests.get(
+                f"{APPRISE_API_URL}/status",
+                headers=_apprise_api_headers(),
+                timeout=5,
+            )
+            return jsonify({
+                "mode": "api",
+                "api_url": APPRISE_API_URL,
+                "api_reachable": r.status_code == 200,
+                "config_key": APPRISE_CONFIG_KEY,
+                "urls_count": len(_apprise_api_get_urls()),
+            })
+        except Exception as e:
+            return jsonify({
+                "mode": "api",
+                "api_url": APPRISE_API_URL,
+                "api_reachable": False,
+                "error": str(e),
+            })
+    else:
+        urls = _get_apprise_urls()
+        return jsonify({
+            "mode": "embedded",
+            "urls_count": len(urls),
+            "urls": urls[:3] if urls else [],
+        })
+
+@app.route("/api/apprise/urls", methods=["GET"])
+def api_apprise_urls_get():
+    if APPRISE_API_URL:
+        urls = _apprise_api_get_urls()
+        return jsonify({"mode": "api", "urls": urls, "config_key": APPRISE_CONFIG_KEY})
+    else:
+        urls = _get_apprise_urls()
+        return jsonify({"mode": "embedded", "urls": urls})
+
+@app.route("/api/apprise/urls", methods=["POST"])
+def api_apprise_urls_set():
+    data = request.get_json(force=True, silent=True) or {}
+    urls = data.get("urls", [])
+    if isinstance(urls, str):
+        urls = [u.strip() for u in urls.split(",") if u.strip()]
+    
+    if APPRISE_API_URL:
+        ok = _apprise_api_set_urls(urls)
+        if ok:
+            log.info("Apprise API URLs set: %s", urls)
+            return jsonify({"ok": True, "mode": "api", "urls": urls})
+        return jsonify({"ok": False, "error": "Failed to set URLs in Apprise API"}), 500
+    else:
+        cfg["apprise_urls"] = ",".join(urls)
+        log.info("Embedded Apprise URLs set: %s", urls)
+        return jsonify({"ok": True, "mode": "embedded", "urls": urls})
+
+@app.route("/api/system/config", methods=["GET"])
+def api_system_config():
+    return jsonify({
+        "connections": {
+            "crowdsec": {
+                "url": CROWDSEC_URL,
+                "api_key_set": bool(CROWDSEC_API_KEY),
+            },
+            "apprise": {
+                "mode": "api" if APPRISE_API_URL else "embedded",
+                "api_url": APPRISE_API_URL,
+                "config_key": APPRISE_CONFIG_KEY,
+                "urls_count": len(_apprise_api_get_urls()) if APPRISE_API_URL else len(_get_apprise_urls()),
+            },
+        },
+        "settings": {
+            "unsecure_mode": UNSECURE,
+            "poll_interval": POLL_INTERVAL,
+        },
+    })
+
+@app.route("/api/system/test", methods=["POST"])
+def api_system_test():
+    results = {
+        "crowdsec": {"status": "unknown", "latency_ms": None, "error": None},
+        "apprise": {"status": "unknown", "latency_ms": None, "error": None},
+    }
+    
+    start = time.time()
+    try:
+        r = requests.get(f"{CROWDSEC_URL}/health", timeout=5)
+        results["crowdsec"]["latency_ms"] = int((time.time() - start) * 1000)
+        results["crowdsec"]["status"] = "connected" if r.status_code == 200 else "error"
+    except Exception as e:
+        results["crowdsec"]["status"] = "error"
+        results["crowdsec"]["error"] = str(e)
+    
+    if APPRISE_API_URL:
+        start = time.time()
+        try:
+            r = requests.get(f"{APPRISE_API_URL}/status", headers=_apprise_api_headers(), timeout=5)
+            results["apprise"]["latency_ms"] = int((time.time() - start) * 1000)
+            results["apprise"]["status"] = "connected" if r.status_code == 200 else "error"
+        except Exception as e:
+            results["apprise"]["status"] = "error"
+            results["apprise"]["error"] = str(e)
+    else:
+        results["apprise"]["status"] = "embedded"
+    
+    return jsonify(results)
+
+@app.route("/health")
+def health_check():
+    return jsonify({"status": "ok", "timestamp": datetime.utcnow().isoformat() + "Z"})
+
+@app.route("/api/unban", methods=["DELETE"])
+def api_unban():
+    decision_id = request.args.get("id")
+    if not decision_id:
+        return jsonify({"error": "id required"}), 400
+    try:
+        r = requests.delete(
+            f"{CROWDSEC_URL}/v1/decisions/{decision_id}",
+            headers=cs_headers(), timeout=10,
+        )
+        if r.status_code in (200, 204):
+            state["events"].appendleft({
+                "time": datetime.utcnow().isoformat() + "Z",
+                "type": "unban",
+                "msg": f"✅ UNBAN manuale id={decision_id}",
+                "data": {},
+            })
+        return jsonify({"status": r.status_code, "ok": r.status_code in (200, 204)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/cooldowns", methods=["GET"])
+def api_cooldowns():
+    now = time.time()
+    result = []
+    for ip, ts in state["cooldowns"].items():
+        remaining = int(cfg["notify_cooldown"] - (now - ts))
+        if remaining > 0:
+            result.append({"ip": ip, "remaining_seconds": remaining})
+    return jsonify(result)
+
+@app.route("/api/cooldowns", methods=["DELETE"])
+def api_clear_cooldowns():
+    ip = request.args.get("ip")
+    if ip:
+        state["cooldowns"].pop(ip, None)
+    else:
+        state["cooldowns"].clear()
+    return jsonify({"ok": True})
+
+@app.route("/")
+def index():
+    return send_from_directory("static", "index.html")
+
+# ---------------------------------------------------------------------------
+if __name__ == "__main__":
+    if not CROWDSEC_API_KEY:
+        log.warning("CROWDSEC_API_KEY not set — API calls will fail.")
+    threading.Thread(target=digest_loop, daemon=True).start()
+    threading.Thread(target=poll_loop, daemon=True).start()
+    threading.Thread(target=_do_poll, daemon=True).start()
+    app.run(host="0.0.0.0", port=5000, debug=False)
