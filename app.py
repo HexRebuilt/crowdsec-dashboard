@@ -47,11 +47,40 @@ AUTH0_CLIENT_SECRET = os.getenv("AUTH0_CLIENT_SECRET", "")
 AUTH_PASSWORD_FILE = "/app/.auth_password"
 DEFAULT_PASSWORDS = ["", "admin", "password", "changeme", "default", "secret", "123456", "admin123", "your_secure_password_here"]
 
+oidc_config = {}
+
 logging.basicConfig(
     level=getattr(logging, os.getenv("LOG_LEVEL", "INFO")),
     format="%(asctime)s %(levelname)s %(message)s",
 )
 log = logging.getLogger(__name__)
+
+def get_oidc_config():
+    global oidc_config
+    if oidc_config:
+        return oidc_config
+    
+    if not AUTH0_DOMAIN:
+        return None
+    
+    if AUTH0_DOMAIN.startswith('http://') or AUTH0_DOMAIN.startswith('https://'):
+        discovery_url = AUTH0_DOMAIN
+    else:
+        if '/' in AUTH0_DOMAIN:
+            base = AUTH0_DOMAIN
+            discovery_url = f"https://{base}/.well-known/openid-configuration"
+        else:
+            discovery_url = f"https://{AUTH0_DOMAIN}/.well-known/openid-configuration"
+    
+    try:
+        r = requests.get(discovery_url, timeout=10)
+        if r.status_code == 200:
+            oidc_config = r.json()
+            log.info("OIDC discovery loaded: %s", oidc_config.get('issuer'))
+            return oidc_config
+    except Exception as e:
+        log.error("Failed to fetch OIDC discovery: %s", e)
+    return None
 
 def generate_random_password(length=16):
     chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*"
@@ -468,11 +497,13 @@ def _prune_cooldowns():
 # ---------------------------------------------------------------------------
 @app.route("/api/auth/status")
 def api_auth_status():
+    oidc = get_oidc_config()
     return jsonify({
         "enabled": AUTH_ENABLED,
         "method": "auth0" if AUTH_AUTH0_ENABLED else "credentials" if AUTH_CREDENTIALS_ENABLED else None,
         "auth0_domain": AUTH0_DOMAIN if AUTH0_DOMAIN else None,
         "auth0_client_id": AUTH0_CLIENT_ID if AUTH0_CLIENT_ID else None,
+        "auth0_authorize_url": oidc.get("authorization_endpoint") if oidc else None,
         "password_change_available": AUTH_CREDENTIALS_ENABLED and not AUTH_AUTH0_ENABLED,
     })
 
@@ -498,15 +529,22 @@ def api_auth_config():
 def api_auth_login():
     data = request.get_json(force=True, silent=True) or {}
     
-    # Auth0 login
     if AUTH0_DOMAIN and AUTH0_CLIENT_ID:
         access_token = data.get("access_token")
         if not access_token:
             return jsonify({"error": "Access token required"}), 400
         
         try:
+            oidc = get_oidc_config()
+            if oidc and oidc.get("userinfo_endpoint"):
+                userinfo_url = oidc["userinfo_endpoint"]
+            elif AUTH0_DOMAIN.startswith('http'):
+                userinfo_url = AUTH0_DOMAIN.replace('.well-known/openid-configuration', 'userinfo')
+            else:
+                userinfo_url = f"https://{AUTH0_DOMAIN}/userinfo"
+            
             userinfo = requests.get(
-                f"https://{AUTH0_DOMAIN}/userinfo",
+                userinfo_url,
                 headers={"Authorization": f"Bearer {access_token}"},
                 timeout=10
             )
@@ -524,7 +562,6 @@ def api_auth_login():
             log.error("Auth0 login error: %s", e)
             return jsonify({"error": "Auth0 error"}), 500
     
-    # Credentials login
     if AUTH_CREDENTIALS_ENABLED:
         username = data.get("username", "")
         password = data.get("password", "")
@@ -948,7 +985,11 @@ def index():
 
 @app.route("/<path:filename>")
 def serve_static(filename):
-    return send_from_directory("static", filename)
+    response = send_from_directory("static", filename)
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
 if __name__ == "__main__":
     if not CROWDSEC_API_KEY:
