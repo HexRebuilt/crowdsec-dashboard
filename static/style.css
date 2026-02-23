@@ -373,40 +373,6 @@ body {
   color: var(--text-secondary);
 }
 
-.time-filter {
-  display: flex;
-  gap: 6px;
-  margin-bottom: 16px;
-  padding: 4px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  width: fit-content;
-}
-
-.time-btn {
-  padding: 8px 16px;
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  font-size: 13px;
-  font-weight: 500;
-  font-family: inherit;
-  cursor: pointer;
-  border-radius: 6px;
-  transition: all var(--transition);
-}
-
-.time-btn:hover {
-  color: var(--text);
-  background: var(--surface-alt);
-}
-
-.time-btn.active {
-  color: var(--text);
-  background: var(--accent);
-}
-
 .stats-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -1113,11 +1079,6 @@ tbody tr:hover {
   .app { padding: 0 12px; }
   
   .header-right .status-badge { display: none; }
-  
-  .time-filter {
-    width: 100%;
-    justify-content: center;
-  }
   
   .dashboard-grid {
     grid-template-columns: 1fr;
