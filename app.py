@@ -355,11 +355,45 @@ def fetch_decisions():
     try:
         r = requests.get(f"{CROWDSEC_URL}/v1/decisions", headers=cs_headers(), timeout=10)
         if r.status_code == 200:
-            return r.json() or []
+            decisions = r.json() or []
+            transformed = []
+            for d in decisions:
+                transformed.append({
+                    "id": d.get("id"),
+                    "ip": d.get("value", "—"),
+                    "type": d.get("type", "ban"),
+                    "scenario": d.get("scenario", "—"),
+                    "origin": d.get("origin", "—"),
+                    "duration": _format_duration(d.get("until")),
+                    "until": d.get("until"),
+                    "value": d.get("value"),
+                })
+            return transformed
         log.warning("GET /v1/decisions -> %s", r.status_code)
     except Exception as e:
         log.error("fetch_decisions: %s", e)
     return None
+
+def _format_duration(until_str):
+    if not until_str:
+        return "—"
+    try:
+        until = datetime.fromisoformat(until_str.replace("Z", "+00:00"))
+        now = datetime.now(timezone.utc)
+        diff = until - now
+        if diff.total_seconds() <= 0:
+            return "expired"
+        hours = int(diff.total_seconds() // 3600)
+        minutes = int((diff.total_seconds() % 3600) // 60)
+        if hours > 24:
+            days = hours // 24
+            return f"{days}d {hours % 24}h"
+        elif hours > 0:
+            return f"{hours}h {minutes}m"
+        else:
+            return f"{minutes}m"
+    except Exception:
+        return "—"
 
 def fetch_alerts(since_minutes=120):
     try:
