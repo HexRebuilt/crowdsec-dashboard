@@ -44,11 +44,18 @@ AUTH0_DOMAIN       = os.getenv("AUTH0_DOMAIN", "")
 AUTH0_CLIENT_ID    = os.getenv("AUTH0_CLIENT_ID", "")
 AUTH0_CLIENT_SECRET = os.getenv("AUTH0_CLIENT_SECRET", "")
 
-AUTH_CREDENTIALS_ENABLED = bool(AUTH_USERNAME and AUTH_PASSWORD)
-AUTH_AUTH0_ENABLED = bool(AUTH0_DOMAIN and AUTH0_CLIENT_ID)
-AUTH_ENABLED = AUTH_CREDENTIALS_ENABLED or AUTH_AUTH0_ENABLED
-
 AUTH_PASSWORD_FILE = "/app/.auth_password"
+DEFAULT_PASSWORDS = ["", "admin", "password", "changeme", "default", "secret", "123456", "admin123"]
+
+logging.basicConfig(
+    level=getattr(logging, os.getenv("LOG_LEVEL", "INFO")),
+    format="%(asctime)s %(levelname)s %(message)s",
+)
+log = logging.getLogger(__name__)
+
+def generate_random_password(length=16):
+    chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*"
+    return ''.join(secrets.choice(chars) for _ in range(length))
 
 def load_runtime_password():
     if os.path.exists(AUTH_PASSWORD_FILE):
@@ -57,7 +64,7 @@ def load_runtime_password():
                 return f.read().strip()
         except:
             pass
-    return AUTH_PASSWORD
+    return None
 
 def save_runtime_password(password):
     try:
@@ -69,13 +76,30 @@ def save_runtime_password(password):
         log.error("Failed to save password: %s", e)
         return False
 
-CURRENT_PASSWORD = load_runtime_password()
+def initialize_password():
+    stored_password = load_runtime_password()
+    if stored_password:
+        return stored_password
+    
+    if AUTH_PASSWORD and AUTH_PASSWORD not in DEFAULT_PASSWORDS:
+        return AUTH_PASSWORD
+    
+    random_password = generate_random_password()
+    if save_runtime_password(random_password):
+        log.info("=" * 60)
+        log.info("GENERATED RANDOM PASSWORD (save this securely):")
+        log.info("  Username: %s", AUTH_USERNAME or "admin")
+        log.info("  Password: %s", random_password)
+        log.info("=" * 60)
+        return random_password
+    
+    return AUTH_PASSWORD
 
-logging.basicConfig(
-    level=getattr(logging, LOG_LEVEL),
-    format="%(asctime)s %(levelname)s %(message)s",
-)
-log = logging.getLogger(__name__)
+CURRENT_PASSWORD = initialize_password()
+
+AUTH_CREDENTIALS_ENABLED = bool(AUTH_USERNAME and CURRENT_PASSWORD)
+AUTH_AUTH0_ENABLED = bool(AUTH0_DOMAIN and AUTH0_CLIENT_ID)
+AUTH_ENABLED = AUTH_CREDENTIALS_ENABLED or AUTH_AUTH0_ENABLED
 
 app = Flask(__name__, static_folder="static")
 CORS(app, supports_credentials=True)
