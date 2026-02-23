@@ -22,7 +22,10 @@
 - [x] Add tooltips for decision fields (type, scenario, origin)
 - [x] Update README with documentation
 - [x] Add pie charts for data visualization
+- [x] Add time filter (day, week, month, all) with proper empty data handling
+- [x] Add "When" column to decisions table
 - [x] Add statistics row with key metrics
+- [x] Add APPRISE_CONFIG_URL support for remote config fetching
 - [x] Show Auth0/Authentik configuration in settings
 
 ## Upcoming Tasks
@@ -96,12 +99,15 @@
 
 ## Chart Data Flow
 
-1. Frontend calls `/api/statistics`
-2. Backend returns aggregated data for charts:
+1. User selects time period (day/week/month/all) from filter buttons
+2. Frontend calls `/api/statistics?period=X`
+3. Backend filters decisions by `created_at` field
+4. Returns aggregated data for charts:
    - Decisions by type (ban, captcha, etc.)
    - Decisions by origin (crowdsec, manual, lists)
    - Top scenarios triggered
    - Events timeline breakdown
+5. Chart displays "No data for this period" if empty
 
 ## Decision Tooltips Content
 
@@ -111,6 +117,7 @@
 | Scenario | The CrowdSec scenario that triggered this decision |
 | Origin | Where the decision came from: CrowdSec, manual, or third-party |
 | Duration | How long the ban will remain active |
+| When | When the decision was created |
 
 ## Environment Variables
 
@@ -121,3 +128,6 @@
 | AUTH0_DOMAIN | Auth0/Authentik domain (SSO mode) |
 | AUTH0_CLIENT_ID | Auth0/Authentik client ID |
 | AUTH0_CLIENT_SECRET | Auth0/Authentik client secret |
+| APPRISE_URLS | Comma-separated notification URLs |
+| APPRISE_API_URL | External Apprise API URL |
+| APPRISE_CONFIG_URL | Remote URL to fetch Apprise config |

@@ -8,6 +8,7 @@ const state = {
   decisionsPerPage: 50,
   decisionsSearch: '',
   alertsSearch: '',
+  currentPeriod: 'all',
   charts: {},
   auth: {
     enabled: false,
@@ -603,7 +604,7 @@ function updateDecisionsUI() {
   const page = state.decisions.slice(start, end);
   
   if (page.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:40px">No active bans</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:40px">No active bans</td></tr>';
     document.getElementById('decisions-pagination').innerHTML = '';
     return;
   }
@@ -615,6 +616,7 @@ function updateDecisionsUI() {
       <td>${d.scenario || '—'}</td>
       <td>${d.origin || '—'}</td>
       <td>${d.duration || '—'}</td>
+      <td>${timeAgo(d.created_at)}</td>
       <td><button class="btn btn-danger btn-sm" onclick="deleteDecision('${d.ip}')">Delete</button></td>
     </tr>
   `).join('');
@@ -785,7 +787,7 @@ async function deleteDecision(ip) {
 
 async function loadStatistics() {
   try {
-    const stats = await api('/api/statistics');
+    const stats = await api(`/api/statistics?period=${state.currentPeriod}`);
     updateCharts(stats);
     document.getElementById('stat-bans').textContent = stats.decisions.total;
     document.getElementById('stat-alerts').textContent = stats.alerts.total;
@@ -801,15 +803,21 @@ function updateCharts(stats) {
   
   if (state.charts.scenarios) {
     state.charts.scenarios.destroy();
+    state.charts.scenarios = null;
   }
   
   const scenarioData = stats.decisions.by_scenario;
   const labels = Object.keys(scenarioData);
   const values = Object.values(scenarioData);
   
-  if (labels.length === 0) return;
-  
   const ctx = document.getElementById('chart-scenarios').getContext('2d');
+  const legend = document.getElementById('legend-scenarios');
+  
+  if (labels.length === 0) {
+    legend.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:20px">No data for this period</div>';
+    return;
+  }
+  
   state.charts.scenarios = new Chart(ctx, {
     type: 'doughnut',
     data: {
@@ -828,7 +836,6 @@ function updateCharts(stats) {
     }
   });
   
-  const legend = document.getElementById('legend-scenarios');
   legend.innerHTML = labels.map((label, i) => `
     <div class="legend-item">
       <span class="legend-color" style="background:${colors[i % colors.length]}"></span>
@@ -849,6 +856,17 @@ function setupTabs() {
   });
 }
 
+function setupTimeFilter() {
+  document.querySelectorAll('.time-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.currentPeriod = btn.dataset.period;
+      loadStatistics();
+    });
+  });
+}
+
 function setupSearch() {
   document.getElementById('decisions-search').addEventListener('input', e => {
     state.decisionsSearch = e.target.value;
@@ -864,6 +882,7 @@ function setupSearch() {
 
 async function initApp() {
   setupTabs();
+  setupTimeFilter();
   setupSearch();
   initResizableColumns();
   

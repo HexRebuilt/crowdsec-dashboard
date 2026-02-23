@@ -119,6 +119,7 @@ In Authentik, add Redirect URI: `https://crowdsec.example.com/callback`
 | `APPRISE_API_URL` | - | External Apprise API URL |
 | `APPRISE_API_KEY` | - | Apprise API Bearer token (if required) |
 | `APPRISE_CONFIG_KEY` | `crowdsec-dashboard` | Configuration storage key in Apprise API |
+| `APPRISE_CONFIG_URL` | - | Remote config URL to fetch Apprise URLs |
 | `APPRISE_URLS` | - | Comma-separated Apprise URLs (for embedded mode) |
 | `POLL_INTERVAL` | `30` | Seconds between polls |
 | `NOTIFY_ON_BAN` | `true` | Send ban notifications |
@@ -209,6 +210,19 @@ APPRISE_CONFIG_KEY=crowdsec-dashboard
 1. Set up [Apprise API](https://github.com/caronc/apprise-api)
 2. Configure your notification URLs in the Apprise UI under the config key `crowdsec-dashboard`
 3. The dashboard will automatically use this configuration for notifications
+
+### Apprise Config URL
+
+Alternatively, you can fetch notification URLs from a remote config URL:
+
+```env
+APPRISE_CONFIG_URL=https://apprise.example.com/cfg/your-config-hash
+```
+
+The URL should return JSON in one of these formats:
+- `["url1", "url2"]` - Array of URLs
+- `{"urls": ["url1", "url2"]}` - Object with urls key
+- `{"url": "single-url"}` - Single URL object
 
 ## Development
 

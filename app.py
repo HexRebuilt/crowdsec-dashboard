@@ -29,6 +29,7 @@ from flask_cors import CORS
 CROWDSEC_URL       = os.getenv("CROWDSEC_URL", "http://crowdsec:8080")
 CROWDSEC_API_KEY   = os.getenv("CROWDSEC_API_KEY", "")
 APPRISE_URLS       = os.getenv("APPRISE_URLS", "")
+APPRISE_CONFIG_URL = os.getenv("APPRISE_CONFIG_URL", "")
 POLL_INTERVAL      = int(os.getenv("POLL_INTERVAL", "30"))
 LOG_LEVEL          = os.getenv("LOG_LEVEL", "INFO")
 UNSECURE           = os.getenv("UNSECURE", "false").lower() == "true"
@@ -222,6 +223,25 @@ state = {
 def _get_apprise_urls():
     if APPRISE_API_URL:
         return []
+    if APPRISE_CONFIG_URL:
+        try:
+            r = requests.get(APPRISE_CONFIG_URL, timeout=10)
+            if r.status_code == 200:
+                data = r.json()
+                if isinstance(data, list):
+                    return data
+                if isinstance(data, dict) and "urls" in data:
+                    return data["urls"]
+                if isinstance(data, dict) and "url" in data:
+                    return [data["url"]]
+                if isinstance(data, dict):
+                    urls = []
+                    for key in ["urls", "notification_urls", "services"]:
+                        if key in data and isinstance(data[key], list):
+                            urls.extend(data[key])
+                    return urls
+        except Exception as e:
+            log.error("Failed to fetch Apprise config URL: %s", e)
     urls_str = cfg["apprise_urls"] or APPRISE_URLS
     return [u.strip() for u in urls_str.split(",") if u.strip()]
 
@@ -367,6 +387,7 @@ def fetch_decisions():
                     "duration": _format_duration(d.get("until")),
                     "until": d.get("until"),
                     "value": d.get("value"),
+                    "created_at": d.get("created_at") or d.get("start_at"),
                 })
             return transformed
         log.warning("GET /v1/decisions -> %s", r.status_code)
@@ -735,7 +756,7 @@ def api_status():
         elapsed = time.time() - state["last_digest_sent"]
         next_digest = max(0, int(cfg["digest_interval"] - elapsed))
     
-    apprise_mode = "api" if APPRISE_API_URL else "embedded"
+    apprise_mode = "api" if APPRISE_API_URL else ("config_url" if APPRISE_CONFIG_URL else "embedded")
     apprise_configured = False
     if APPRISE_API_URL:
         apprise_configured = bool(_apprise_api_get_urls())
@@ -749,6 +770,7 @@ def api_status():
         "crowdsec_url":       CROWDSEC_URL,
         "apprise_mode":       apprise_mode,
         "apprise_api_url":    APPRISE_API_URL,
+        "apprise_config_url": APPRISE_CONFIG_URL,
         "apprise_configured": apprise_configured,
         "unsecure_mode":      UNSECURE,
         "total_bans":         len(state["decisions"]),
