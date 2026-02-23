@@ -117,9 +117,9 @@ In Authentik, add Redirect URI: `https://crowdsec.example.com/callback`
 | `AUTH0_CLIENT_SECRET` | - | OIDC application client secret |
 | `APP_URL` | - | Dashboard public URL (required for OIDC callback) |
 | `APPRISE_API_URL` | - | External Apprise API URL |
-| `APPRISE_API_KEY` | - | Apprise API authentication key |
-| `APPRISE_CONFIG_KEY` | `crowdsec-dashboard` | Config key in Apprise API |
-| `APPRISE_URLS` | - | Comma-separated Apprise URLs |
+| `APPRISE_API_KEY` | - | Apprise API Bearer token (if required) |
+| `APPRISE_CONFIG_KEY` | `crowdsec-dashboard` | Configuration storage key in Apprise API |
+| `APPRISE_URLS` | - | Comma-separated Apprise URLs (for embedded mode) |
 | `POLL_INTERVAL` | `30` | Seconds between polls |
 | `NOTIFY_ON_BAN` | `true` | Send ban notifications |
 | `NOTIFY_ON_ALERT` | `true` | Send alert notifications |
@@ -196,6 +196,19 @@ The dashboard provides helpful tooltips for non-technical users:
 | Email | `mailto://user:pass@host` |
 
 See [Apprise Wiki](https://github.com/caronc/apprise/wiki) for 80+ services.
+
+### Apprise API Configuration
+
+For managing multiple notification services, use an external Apprise API instance:
+
+```env
+APPRISE_API_URL=https://apprise.example.com
+APPRISE_CONFIG_KEY=crowdsec-dashboard
+```
+
+1. Set up [Apprise API](https://github.com/caronc/apprise-api)
+2. Configure your notification URLs in the Apprise UI under the config key `crowdsec-dashboard`
+3. The dashboard will automatically use this configuration for notifications
 
 ## Development
 

@@ -638,17 +638,21 @@ body {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  overflow: hidden;
+  overflow-x: auto;
 }
 
 table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
 }
 
 th, td {
   padding: 10px 14px;
   text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 th {
@@ -658,6 +662,35 @@ th {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  position: relative;
+  user-select: none;
+}
+
+th:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 4px;
+  height: 60%;
+  background: var(--border);
+  cursor: col-resize;
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+
+th:hover::after {
+  opacity: 1;
+}
+
+th.resizing {
+  background: var(--accent-bg);
+}
+
+th.resizing::after {
+  opacity: 1;
+  background: var(--accent);
 }
 
 td {
@@ -748,12 +781,16 @@ tbody tr:hover {
 .pagination {
   display: flex;
   justify-content: center;
-  gap: 6px;
+  align-items: center;
+  gap: 4px;
   margin-top: 12px;
+  flex-wrap: wrap;
 }
 
 .pagination button {
-  padding: 6px 12px;
+  min-width: 36px;
+  height: 36px;
+  padding: 6px 10px;
   background: var(--surface);
   border: 1px solid var(--border);
   color: var(--text);
@@ -762,15 +799,31 @@ tbody tr:hover {
   font-family: inherit;
   cursor: pointer;
   transition: all var(--transition);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.pagination button:hover {
+.pagination button:hover:not(:disabled) {
   background: var(--surface-alt);
+  border-color: var(--accent);
 }
 
 .pagination button.active {
   background: var(--accent);
   border-color: var(--accent);
+  color: white;
+}
+
+.pagination button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pagination .page-ellipsis {
+  padding: 6px 8px;
+  color: var(--text-muted);
+  user-select: none;
 }
 
 .settings-grid {

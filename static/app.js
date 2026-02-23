@@ -347,9 +347,11 @@ async function checkAuth() {
 }
 
 function updateAuthMethodSelect() {
-  const content = document.getElementById('auth-method-content');
+  const card = document.getElementById('auth-method-settings');
   
   if (!state.auth.enabled) {
+    card.style.display = 'block';
+    const content = document.getElementById('auth-method-content');
     content.innerHTML = `
       <div class="status-line">
         <span class="status-label">Status</span>
@@ -361,39 +363,23 @@ function updateAuthMethodSelect() {
   }
   
   if (state.auth.method === 'auth0') {
-    const domain = state.auth.auth0Domain || '';
-    const displayDomain = domain.includes('://') ? domain : `https://${domain}`;
-    content.innerHTML = `
-      <div class="status-line">
-        <span class="status-label">Current Method</span>
-        <span class="status-value connected">SSO (OIDC)</span>
-      </div>
-      <div class="status-line">
-        <span class="status-label">Provider</span>
-        <span class="status-value code" style="word-break: break-all; font-size: 12px;">${displayDomain}</span>
-      </div>
-      <div class="status-line">
-        <span class="status-label">Client ID</span>
-        <span class="status-value code">${state.auth.auth0ClientId || '—'}</span>
-      </div>
-      <div class="status-line">
-        <span class="status-label">App URL</span>
-        <span class="status-value code">${state.auth.appUrl || window.location.origin}</span>
-      </div>
-    `;
-  } else {
-    content.innerHTML = `
-      <div class="status-line">
-        <span class="status-label">Current Method</span>
-        <span class="status-value connected">Username / Password</span>
-      </div>
-      <div class="status-line">
-        <span class="status-label">Username</span>
-        <span class="status-value">${state.auth.username || '—'}</span>
-      </div>
-      <p class="settings-note">To switch to SSO, configure AUTH0_DOMAIN, AUTH0_CLIENT_ID, and AUTH0_CLIENT_SECRET environment variables.</p>
-    `;
+    card.style.display = 'none';
+    return;
   }
+  
+  card.style.display = 'block';
+  const content = document.getElementById('auth-method-content');
+  content.innerHTML = `
+    <div class="status-line">
+      <span class="status-label">Current Method</span>
+      <span class="status-value connected">Username / Password</span>
+    </div>
+    <div class="status-line">
+      <span class="status-label">Username</span>
+      <span class="status-value">${state.auth.username || '—'}</span>
+    </div>
+    <p class="settings-note">To switch to SSO, configure AUTH0_DOMAIN, AUTH0_CLIENT_ID, and AUTH0_CLIENT_SECRET environment variables.</p>
+  `;
 }
 
 async function loadStatus() {
@@ -648,10 +634,68 @@ function updatePagination() {
   }
   
   let html = '';
-  for (let i = 1; i <= pages; i++) {
+  
+  html += `<button onclick="goToPage(1)" ${state.decisionsPage === 1 ? 'disabled' : ''} title="First page">«</button>`;
+  html += `<button onclick="goToPage(${state.decisionsPage - 1})" ${state.decisionsPage === 1 ? 'disabled' : ''} title="Previous page">‹</button>`;
+  
+  const rangeStart = Math.max(1, state.decisionsPage - 2);
+  const rangeEnd = Math.min(pages, state.decisionsPage + 2);
+  
+  if (rangeStart > 1) {
+    html += `<button onclick="goToPage(1)">1</button>`;
+    if (rangeStart > 2) {
+      html += `<span class="page-ellipsis">…</span>`;
+    }
+  }
+  
+  for (let i = rangeStart; i <= rangeEnd; i++) {
     html += `<button class="${i === state.decisionsPage ? 'active' : ''}" onclick="goToPage(${i})">${i}</button>`;
   }
+  
+  if (rangeEnd < pages) {
+    if (rangeEnd < pages - 1) {
+      html += `<span class="page-ellipsis">…</span>`;
+    }
+    html += `<button onclick="goToPage(${pages})">${pages}</button>`;
+  }
+  
+  html += `<button onclick="goToPage(${state.decisionsPage + 1})" ${state.decisionsPage === pages ? 'disabled' : ''} title="Next page">›</button>`;
+  html += `<button onclick="goToPage(${pages})" ${state.decisionsPage === pages ? 'disabled' : ''} title="Last page">»</button>`;
+  
   container.innerHTML = html;
+}
+
+function initResizableColumns() {
+  const tables = document.querySelectorAll('table');
+  tables.forEach(table => {
+    const ths = table.querySelectorAll('th');
+    ths.forEach((th, index) => {
+      if (index === ths.length - 1) return;
+      
+      th.addEventListener('mousedown', (e) => {
+        if (e.offsetX < th.offsetWidth - 10) return;
+        
+        const startX = e.clientX;
+        const startWidth = th.offsetWidth;
+        
+        th.classList.add('resizing');
+        
+        const onMouseMove = (e) => {
+          const newWidth = Math.max(50, startWidth + (e.clientX - startX));
+          th.style.width = newWidth + 'px';
+        };
+        
+        const onMouseUp = () => {
+          th.classList.remove('resizing');
+          document.removeEventListener('mousemove', onMouseMove);
+          document.removeEventListener('mouseup', onMouseUp);
+        };
+        
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+      });
+    });
+  });
 }
 
 function goToPage(page) {
@@ -834,6 +878,7 @@ async function initApp() {
   setupTabs();
   setupTimeFilter();
   setupSearch();
+  initResizableColumns();
   
   await Promise.all([
     loadStatus(),
