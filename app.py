@@ -1041,6 +1041,10 @@ def api_clear_cooldowns():
         state["cooldowns"].clear()
     return jsonify({"ok": True})
 
+@app.route("/callback")
+def callback():
+    return send_from_directory("static", "index.html")
+
 @app.route("/")
 def index():
     return send_from_directory("static", "index.html")
