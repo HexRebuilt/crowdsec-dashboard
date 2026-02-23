@@ -1066,6 +1066,19 @@ tbody tr:hover {
   padding: 20px;
 }
 
+.chart-card-large {
+  max-width: 500px;
+  margin: 0 auto;
+}
+
+.chart-card-large .chart-container {
+  height: 220px;
+}
+
+.chart-card-large .chart-legend {
+  max-height: 200px;
+}
+
 .chart-card h3 {
   font-size: 14px;
   font-weight: 600;

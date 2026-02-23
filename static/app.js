@@ -832,67 +832,14 @@ function updateCharts(stats) {
     '#ff9f0a', '#64d2ff', '#ff375f', '#32d74b', '#5e5ce6'
   ];
 
-  if (state.charts.decisionsType) {
-    state.charts.decisionsType.destroy();
-  }
-  if (state.charts.decisionsOrigin) {
-    state.charts.decisionsOrigin.destroy();
-  }
   if (state.charts.scenarios) {
     state.charts.scenarios.destroy();
   }
-  if (state.charts.events) {
-    state.charts.events.destroy();
-  }
-
-  const decisionsTypeData = stats.decisions.by_type;
-  state.charts.decisionsType = new Chart(document.getElementById('chart-decisions-type'), {
-    type: 'doughnut',
-    data: {
-      labels: Object.keys(decisionsTypeData),
-      datasets: [{
-        data: Object.values(decisionsTypeData),
-        backgroundColor: chartColors,
-        borderWidth: 0
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false }
-      },
-      cutout: '65%'
-    }
-  });
-  updateChartLegend('legend-decisions-type', decisionsTypeData, chartColors);
-
-  const decisionsOriginData = stats.decisions.by_origin;
-  state.charts.decisionsOrigin = new Chart(document.getElementById('chart-decisions-origin'), {
-    type: 'doughnut',
-    data: {
-      labels: Object.keys(decisionsOriginData),
-      datasets: [{
-        data: Object.values(decisionsOriginData),
-        backgroundColor: chartColors,
-        borderWidth: 0
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false }
-      },
-      cutout: '65%'
-    }
-  });
-  updateChartLegend('legend-decisions-origin', decisionsOriginData, chartColors);
 
   const scenarioData = stats.decisions.by_scenario;
   const topScenarios = Object.entries(scenarioData)
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 6)
+    .slice(0, 8)
     .reduce((obj, [k, v]) => ({ ...obj, [k]: v }), {});
   
   state.charts.scenarios = new Chart(document.getElementById('chart-scenarios'), {
@@ -915,18 +862,7 @@ function updateCharts(stats) {
     }
   });
   updateChartLegend('legend-scenarios', topScenarios, chartColors);
-
-  const eventsData = stats.events.by_type;
-  state.charts.events = new Chart(document.getElementById('chart-events'), {
-    type: 'doughnut',
-    data: {
-      labels: Object.keys(eventsData),
-      datasets: [{
-        data: Object.values(eventsData),
-        backgroundColor: chartColors,
-        borderWidth: 0
-      }]
-    },
+}
     options: {
       responsive: true,
       maintainAspectRatio: false,
