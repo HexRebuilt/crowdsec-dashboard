@@ -45,7 +45,7 @@ AUTH0_CLIENT_ID    = os.getenv("AUTH0_CLIENT_ID", "")
 AUTH0_CLIENT_SECRET = os.getenv("AUTH0_CLIENT_SECRET", "")
 
 AUTH_PASSWORD_FILE = "/app/.auth_password"
-DEFAULT_PASSWORDS = ["", "admin", "password", "changeme", "default", "secret", "123456", "admin123"]
+DEFAULT_PASSWORDS = ["", "admin", "password", "changeme", "default", "secret", "123456", "admin123", "your_secure_password_here"]
 
 logging.basicConfig(
     level=getattr(logging, os.getenv("LOG_LEVEL", "INFO")),
