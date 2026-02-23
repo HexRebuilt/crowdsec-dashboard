@@ -18,6 +18,8 @@ const state = {
     auth0Domain: null,
     auth0ClientId: null,
     auth0AuthorizeUrl: null,
+    auth0TokenUrl: null,
+    appUrl: null,
     passwordChangeAvailable: false
   }
 };
@@ -155,14 +157,15 @@ async function handleSSOLogin() {
     return;
   }
   
-  const redirectUri = encodeURIComponent(window.location.origin + '/callback');
+  const appUrl = state.auth.appUrl || window.location.origin;
+  const redirectUri = encodeURIComponent(appUrl + '/callback');
   const stateParam = btoa(Math.random().toString());
   sessionStorage.setItem('auth0_state', stateParam);
   
   let authUrl;
   if (authorizeUrl) {
     authUrl = `${authorizeUrl}?` +
-      `response_type=token&` +
+      `response_type=code&` +
       `client_id=${clientId}&` +
       `redirect_uri=${redirectUri}&` +
       `scope=openid%20profile%20email&` +
@@ -170,7 +173,7 @@ async function handleSSOLogin() {
   } else {
     const domain = state.auth.auth0Domain;
     authUrl = `https://${domain}/authorize?` +
-      `response_type=token&` +
+      `response_type=code&` +
       `client_id=${clientId}&` +
       `redirect_uri=${redirectUri}&` +
       `scope=openid%20profile%20email&` +
@@ -180,7 +183,49 @@ async function handleSSOLogin() {
   window.location.href = authUrl;
 }
 
-async function handleAuth0Callback() {
+async function handleAuth0Callback(code) {
+  const appUrl = state.auth.appUrl || window.location.origin;
+  const redirectUri = appUrl + '/callback';
+  
+  if (code) {
+    const urlParams = new URLSearchParams(window.location.search);
+    const stateParam = urlParams.get('state');
+    
+    const savedState = sessionStorage.getItem('auth0_state');
+    if (savedState && savedState !== stateParam) {
+      showToast('Invalid state parameter', 'error');
+      return false;
+    }
+    
+    sessionStorage.removeItem('auth0_state');
+    
+    try {
+      const res = await fetch('/api/auth/callback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ code: code, redirect_uri: redirectUri })
+      });
+      
+      const data = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(data.error || 'Login failed');
+      }
+      
+      state.auth.authenticated = true;
+      state.auth.username = data.username;
+      window.history.replaceState({}, document.title, window.location.pathname);
+      showApp();
+      document.getElementById('user-badge').textContent = data.username;
+      await initApp();
+      return true;
+    } catch (e) {
+      showToast(e.message, 'error');
+      return false;
+    }
+  }
+  
   const hash = window.location.hash.substring(1);
   const params = new URLSearchParams(hash);
   const accessToken = params.get('access_token');
@@ -236,7 +281,18 @@ async function handleLogout() {
 }
 
 async function checkAuth() {
-  if (window.location.pathname === '/callback' || window.location.hash.includes('access_token')) {
+  const urlParams = new URLSearchParams(window.location.search);
+  const code = urlParams.get('code');
+  
+  if (code) {
+    const handled = await handleAuth0Callback(code);
+    if (!handled) {
+      window.location.href = '/';
+    }
+    return;
+  }
+  
+  if (window.location.hash.includes('access_token')) {
     const handled = await handleAuth0Callback();
     if (!handled) {
       window.location.href = '/';
@@ -251,6 +307,8 @@ async function checkAuth() {
     state.auth.auth0Domain = status.auth0_domain;
     state.auth.auth0ClientId = status.auth0_client_id;
     state.auth.auth0AuthorizeUrl = status.auth0_authorize_url;
+    state.auth.auth0TokenUrl = status.auth0_token_url;
+    state.auth.appUrl = status.app_url;
     state.auth.passwordChangeAvailable = status.password_change_available;
     
     if (status.method === 'auth0' || (status.auth0_domain && status.auth0_client_id)) {

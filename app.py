@@ -46,6 +46,7 @@ AUTH0_CLIENT_SECRET = os.getenv("AUTH0_CLIENT_SECRET", "")
 
 AUTH_PASSWORD_FILE = "/app/.auth_password"
 DEFAULT_PASSWORDS = ["", "admin", "password", "changeme", "default", "secret", "123456", "admin123", "your_secure_password_here"]
+APP_URL = os.getenv("APP_URL", "")
 
 oidc_config = {}
 
@@ -504,6 +505,8 @@ def api_auth_status():
         "auth0_domain": AUTH0_DOMAIN if AUTH0_DOMAIN else None,
         "auth0_client_id": AUTH0_CLIENT_ID if AUTH0_CLIENT_ID else None,
         "auth0_authorize_url": oidc.get("authorization_endpoint") if oidc else None,
+        "auth0_token_url": oidc.get("token_endpoint") if oidc else None,
+        "app_url": APP_URL,
         "password_change_available": AUTH_CREDENTIALS_ENABLED and not AUTH_AUTH0_ENABLED,
     })
 
@@ -577,6 +580,65 @@ def api_auth_login():
         return jsonify({"error": "Invalid credentials"}), 401
     
     return jsonify({"error": "Auth not configured"}), 400
+
+@app.route("/api/auth/callback", methods=["POST"])
+def api_auth_callback():
+    data = request.get_json(force=True, silent=True) or {}
+    code = data.get("code")
+    redirect_uri = data.get("redirect_uri")
+    
+    if not code:
+        return jsonify({"error": "Authorization code required"}), 400
+    
+    oidc = get_oidc_config()
+    if not oidc:
+        return jsonify({"error": "OIDC not configured"}), 400
+    
+    token_url = oidc.get("token_endpoint")
+    if not token_url:
+        return jsonify({"error": "Token endpoint not found in OIDC config"}), 400
+    
+    try:
+        token_data = {
+            "grant_type": "authorization_code",
+            "code": code,
+            "client_id": AUTH0_CLIENT_ID,
+            "client_secret": AUTH0_CLIENT_SECRET,
+            "redirect_uri": redirect_uri,
+        }
+        
+        token_resp = requests.post(token_url, data=token_data, timeout=10)
+        if token_resp.status_code != 200:
+            log.error("Token exchange failed: %s - %s", token_resp.status_code, token_resp.text)
+            return jsonify({"error": "Token exchange failed"}), 401
+        
+        tokens = token_resp.json()
+        access_token = tokens.get("access_token")
+        if not access_token:
+            return jsonify({"error": "No access token in response"}), 400
+        
+        userinfo_url = oidc.get("userinfo_endpoint")
+        if not userinfo_url:
+            return jsonify({"error": "Userinfo endpoint not found"}), 400
+        
+        userinfo = requests.get(
+            userinfo_url,
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=10
+        )
+        if userinfo.status_code != 200:
+            return jsonify({"error": "Failed to fetch user info"}), 401
+        
+        user_data = userinfo.json()
+        username = user_data.get("email") or user_data.get("sub", "user")
+        token = create_session(username)
+        
+        response = make_response(jsonify({"ok": True, "username": username}))
+        response.set_cookie("session_token", token, httponly=True, samesite="Lax", max_age=86400)
+        return response
+    except Exception as e:
+        log.error("OAuth callback error: %s", e)
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/api/auth/logout", methods=["POST"])
 def api_auth_logout():
