@@ -452,6 +452,24 @@ def api_auth_status():
         "password_change_available": AUTH_CREDENTIALS_ENABLED and not AUTH_AUTH0_ENABLED,
     })
 
+@app.route("/api/auth/config")
+@auth_required
+def api_auth_config():
+    return jsonify({
+        "enabled": AUTH_ENABLED,
+        "method": "auth0" if AUTH_AUTH0_ENABLED else "credentials" if AUTH_CREDENTIALS_ENABLED else None,
+        "credentials": {
+            "enabled": AUTH_CREDENTIALS_ENABLED,
+            "username": AUTH_USERNAME if AUTH_CREDENTIALS_ENABLED else None,
+            "password_set": bool(load_runtime_password()) if AUTH_CREDENTIALS_ENABLED else False,
+        },
+        "auth0": {
+            "enabled": AUTH_AUTH0_ENABLED,
+            "domain": AUTH0_DOMAIN if AUTH_AUTH0_ENABLED else None,
+            "client_id": AUTH0_CLIENT_ID if AUTH_AUTH0_ENABLED else None,
+        },
+    })
+
 @app.route("/api/auth/login", methods=["POST"])
 def api_auth_login():
     data = request.get_json(force=True, silent=True) or {}
@@ -583,6 +601,97 @@ def api_status():
         "digest_pending":     len(state["digest_buffer"]),
         "next_digest_in":     next_digest,
         "cooldowns_tracked":  len(state["cooldowns"]),
+    })
+
+@app.route("/api/statistics")
+@auth_required
+def api_statistics():
+    period = request.args.get("period", "all")
+    
+    now = datetime.now(timezone.utc)
+    if period == "day":
+        cutoff = now - timedelta(days=1)
+    elif period == "week":
+        cutoff = now - timedelta(weeks=1)
+    elif period == "month":
+        cutoff = now - timedelta(days=30)
+    else:
+        cutoff = None
+    
+    decisions = state["decisions"]
+    alerts = state["alerts"]
+    events = list(state["events"])
+    
+    def filter_by_time(items, time_field="created_at"):
+        if cutoff is None:
+            return items
+        filtered = []
+        for item in items:
+            ts = item.get(time_field) or item.get("start_at") or item.get("time")
+            if ts:
+                try:
+                    dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                    if dt >= cutoff:
+                        filtered.append(item)
+                except:
+                    filtered.append(item)
+        return filtered
+    
+    filtered_decisions = filter_by_time(decisions, "created_at")
+    filtered_alerts = filter_by_time(alerts, "start_at")
+    filtered_events = filter_by_time(events, "time")
+    
+    decisions_by_type = {}
+    for d in filtered_decisions:
+        t = d.get("type", "unknown")
+        decisions_by_type[t] = decisions_by_type.get(t, 0) + 1
+    
+    decisions_by_scenario = {}
+    for d in filtered_decisions:
+        s = d.get("scenario", "unknown")
+        decisions_by_scenario[s] = decisions_by_scenario.get(s, 0) + 1
+    
+    decisions_by_origin = {}
+    for d in filtered_decisions:
+        o = d.get("origin", "unknown")
+        decisions_by_origin[o] = decisions_by_origin.get(o, 0) + 1
+    
+    alerts_by_scenario = {}
+    for a in filtered_alerts:
+        s = a.get("scenario", "unknown")
+        alerts_by_scenario[s] = alerts_by_scenario.get(s, 0) + 1
+    
+    events_by_type = {}
+    for e in filtered_events:
+        t = e.get("type", "unknown")
+        events_by_type[t] = events_by_type.get(t, 0) + 1
+    
+    return jsonify({
+        "period": period,
+        "decisions": {
+            "total": len(filtered_decisions),
+            "by_type": decisions_by_type,
+            "by_scenario": decisions_by_scenario,
+            "by_origin": decisions_by_origin,
+        },
+        "alerts": {
+            "total": len(filtered_alerts),
+            "by_scenario": alerts_by_scenario,
+        },
+        "events": {
+            "total": len(filtered_events),
+            "by_type": events_by_type,
+        },
+        "timeline": {
+            "decisions": [
+                {"time": d.get("created_at"), "type": d.get("type"), "ip": d.get("value")}
+                for d in filtered_decisions[:50]
+            ],
+            "alerts": [
+                {"time": a.get("start_at"), "scenario": a.get("scenario"), "ip": (a.get("source") or {}).get("ip")}
+                for a in filtered_alerts[:50]
+            ],
+        }
     })
 
 @app.route("/api/config", methods=["GET"])

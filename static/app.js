@@ -8,6 +8,8 @@ const state = {
   decisionsPerPage: 50,
   decisionsSearch: '',
   alertsSearch: '',
+  currentPeriod: 'all',
+  charts: {},
   auth: {
     enabled: false,
     method: null,
@@ -770,6 +772,7 @@ async function initApp() {
   setupTabs();
   setupSearch();
   setupTooltips();
+  setupTimeFilter();
 
   document.getElementById('save-config').addEventListener('click', saveConfig);
   document.getElementById('test-notify').addEventListener('click', testNotification);
@@ -781,14 +784,246 @@ async function initApp() {
     loadDecisions(),
     loadAlerts(),
     loadAppriseStatus(),
-    loadAppriseUrls()
+    loadAppriseUrls(),
+    loadAuthProviderSettings()
   ]);
+
+  await loadStatistics();
 
   setInterval(loadStatus, 30000);
   setInterval(() => {
     loadDecisions();
     loadAlerts();
+    loadStatistics();
   }, 30000);
+}
+
+function setupTimeFilter() {
+  document.querySelectorAll('.time-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.currentPeriod = btn.dataset.period;
+      loadStatistics();
+    });
+  });
+}
+
+async function loadStatistics() {
+  try {
+    const stats = await api(`/api/statistics?period=${state.currentPeriod}`);
+    updateCharts(stats);
+    updateStatsRow(stats);
+  } catch (e) {
+    console.error('Failed to load statistics:', e);
+  }
+}
+
+function updateStatsRow(stats) {
+  document.getElementById('stat-bans').textContent = stats.decisions.total;
+  document.getElementById('stat-alerts').textContent = stats.alerts.total;
+  document.getElementById('stat-sent').textContent = state.status.sent_count || 0;
+  document.getElementById('stat-suppressed').textContent = state.status.suppressed_count || 0;
+}
+
+function updateCharts(stats) {
+  const chartColors = [
+    '#0a84ff', '#30d158', '#ff453a', '#ffd60a', '#bf5af2', 
+    '#ff9f0a', '#64d2ff', '#ff375f', '#32d74b', '#5e5ce6'
+  ];
+
+  if (state.charts.decisionsType) {
+    state.charts.decisionsType.destroy();
+  }
+  if (state.charts.decisionsOrigin) {
+    state.charts.decisionsOrigin.destroy();
+  }
+  if (state.charts.scenarios) {
+    state.charts.scenarios.destroy();
+  }
+  if (state.charts.events) {
+    state.charts.events.destroy();
+  }
+
+  const decisionsTypeData = stats.decisions.by_type;
+  state.charts.decisionsType = new Chart(document.getElementById('chart-decisions-type'), {
+    type: 'doughnut',
+    data: {
+      labels: Object.keys(decisionsTypeData),
+      datasets: [{
+        data: Object.values(decisionsTypeData),
+        backgroundColor: chartColors,
+        borderWidth: 0
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false }
+      },
+      cutout: '65%'
+    }
+  });
+  updateChartLegend('legend-decisions-type', decisionsTypeData, chartColors);
+
+  const decisionsOriginData = stats.decisions.by_origin;
+  state.charts.decisionsOrigin = new Chart(document.getElementById('chart-decisions-origin'), {
+    type: 'doughnut',
+    data: {
+      labels: Object.keys(decisionsOriginData),
+      datasets: [{
+        data: Object.values(decisionsOriginData),
+        backgroundColor: chartColors,
+        borderWidth: 0
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false }
+      },
+      cutout: '65%'
+    }
+  });
+  updateChartLegend('legend-decisions-origin', decisionsOriginData, chartColors);
+
+  const scenarioData = stats.decisions.by_scenario;
+  const topScenarios = Object.entries(scenarioData)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .reduce((obj, [k, v]) => ({ ...obj, [k]: v }), {});
+  
+  state.charts.scenarios = new Chart(document.getElementById('chart-scenarios'), {
+    type: 'doughnut',
+    data: {
+      labels: Object.keys(topScenarios).map(s => s.split('/').pop()),
+      datasets: [{
+        data: Object.values(topScenarios),
+        backgroundColor: chartColors,
+        borderWidth: 0
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false }
+      },
+      cutout: '65%'
+    }
+  });
+  updateChartLegend('legend-scenarios', topScenarios, chartColors);
+
+  const eventsData = stats.events.by_type;
+  state.charts.events = new Chart(document.getElementById('chart-events'), {
+    type: 'doughnut',
+    data: {
+      labels: Object.keys(eventsData),
+      datasets: [{
+        data: Object.values(eventsData),
+        backgroundColor: chartColors,
+        borderWidth: 0
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false }
+      },
+      cutout: '65%'
+    }
+  });
+  updateChartLegend('legend-events', eventsData, chartColors);
+}
+
+function updateChartLegend(legendId, data, colors) {
+  const legend = document.getElementById(legendId);
+  const entries = Object.entries(data);
+  const total = entries.reduce((sum, [, v]) => sum + v, 0);
+  
+  legend.innerHTML = entries.map(([label, value], i) => {
+    const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
+    const shortLabel = label.split('/').pop();
+    return `
+      <div class="legend-item">
+        <span class="legend-color" style="background: ${colors[i % colors.length]}"></span>
+        <span class="legend-label">${shortLabel}</span>
+        <span class="legend-value">${value} (${percentage}%)</span>
+      </div>
+    `;
+  }).join('');
+}
+
+async function loadAuthProviderSettings() {
+  try {
+    const authConfig = await api('/api/auth/config');
+    updateAuthProviderUI(authConfig);
+  } catch (e) {
+    console.error('Failed to load auth provider settings:', e);
+  }
+}
+
+function updateAuthProviderUI(config) {
+  const providerCard = document.getElementById('auth-provider-card');
+  const providerContent = document.getElementById('auth-provider-content');
+
+  if (!config.enabled) {
+    providerCard.style.display = 'none';
+    return;
+  }
+
+  providerCard.style.display = 'block';
+
+  if (config.auth0?.enabled) {
+    providerContent.innerHTML = `
+      <div class="status-line">
+        <span class="status-label">Provider</span>
+        <span class="status-value">SSO (Auth0/Authentik)</span>
+      </div>
+      <div class="status-line">
+        <span class="status-label">Domain</span>
+        <span class="status-value">${config.auth0.domain}</span>
+      </div>
+      <div class="status-line">
+        <span class="status-label">Client ID</span>
+        <span class="status-value code">${config.auth0.client_id}</span>
+      </div>
+      <div class="status-line">
+        <span class="status-label">Callback URL</span>
+        <span class="status-value code">${window.location.origin}/callback</span>
+      </div>
+      <div class="settings-note">
+        <strong>Configuration:</strong><br>
+        1. In your Auth0/Authentik app, add this Callback URL<br>
+        2. Add this origin to Allowed Web Origins<br>
+        3. Password login is disabled when SSO is active
+      </div>
+    `;
+  } else if (config.credentials?.enabled) {
+    providerContent.innerHTML = `
+      <div class="status-line">
+        <span class="status-label">Provider</span>
+        <span class="status-value">Username/Password</span>
+      </div>
+      <div class="status-line">
+        <span class="status-label">Username</span>
+        <span class="status-value">${config.credentials.username}</span>
+      </div>
+      <div class="status-line">
+        <span class="status-label">Password</span>
+        <span class="status-value">${config.credentials.password_set ? '••••••••' : 'Not set'}</span>
+      </div>
+      <div class="settings-note">
+        To enable SSO (Auth0/Authentik), set these environment variables:<br>
+        <code>AUTH0_DOMAIN=your-domain.auth0.com</code><br>
+        <code>AUTH0_CLIENT_ID=your-client-id</code><br>
+        <code>AUTH0_CLIENT_SECRET=your-client-secret</code>
+      </div>
+    `;
+  }
 }
 
 async function init() {
