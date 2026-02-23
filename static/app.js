@@ -354,6 +354,8 @@ function updateAuthMethodSelect() {
   }
   
   if (state.auth.method === 'auth0') {
+    const domain = state.auth.auth0Domain || '';
+    const displayDomain = domain.includes('://') ? domain : `https://${domain}`;
     content.innerHTML = `
       <div class="status-line">
         <span class="status-label">Current Method</span>
@@ -361,15 +363,26 @@ function updateAuthMethodSelect() {
       </div>
       <div class="status-line">
         <span class="status-label">Provider</span>
-        <span class="status-value code">${state.auth.auth0Domain || '—'}</span>
+        <span class="status-value code" style="word-break: break-all; font-size: 12px;">${displayDomain}</span>
       </div>
-      <p class="settings-note">To switch to password authentication, remove AUTH0_* environment variables and set AUTH_USERNAME/AUTH_PASSWORD.</p>
+      <div class="status-line">
+        <span class="status-label">Client ID</span>
+        <span class="status-value code">${state.auth.auth0ClientId || '—'}</span>
+      </div>
+      <div class="status-line">
+        <span class="status-label">App URL</span>
+        <span class="status-value code">${state.auth.appUrl || window.location.origin}</span>
+      </div>
     `;
   } else {
     content.innerHTML = `
       <div class="status-line">
         <span class="status-label">Current Method</span>
         <span class="status-value connected">Username / Password</span>
+      </div>
+      <div class="status-line">
+        <span class="status-label">Username</span>
+        <span class="status-value">${state.auth.username || '—'}</span>
       </div>
       <p class="settings-note">To switch to SSO, configure AUTH0_DOMAIN, AUTH0_CLIENT_ID, and AUTH0_CLIENT_SECRET environment variables.</p>
     `;

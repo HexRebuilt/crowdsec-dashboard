@@ -103,7 +103,6 @@
 
     <nav class="tabs tabs-top">
       <button class="tab active" data-tab="dashboard">Dashboard</button>
-      <button class="tab" data-tab="decisions">Decisions</button>
       <button class="tab" data-tab="alerts">Alerts</button>
       <button class="tab" data-tab="settings">Settings</button>
     </nav>
@@ -187,29 +186,29 @@
             </div>
           </div>
         </div>
-      </section>
 
-      <section id="tab-decisions" class="tab-panel">
-        <div class="section-header">
-          <h2>Active Bans <span id="decisions-count" class="count-badge"></span></h2>
-          <input type="text" id="decisions-search" class="search-input" placeholder="Search IP...">
+        <div class="decisions-section">
+          <div class="section-header">
+            <h2>Active Bans <span id="decisions-count" class="count-badge"></span></h2>
+            <input type="text" id="decisions-search" class="search-input" placeholder="Search IP...">
+          </div>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>IP</th>
+                  <th>Type</th>
+                  <th>Scenario</th>
+                  <th>Origin</th>
+                  <th>Duration</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="decisions-body"></tbody>
+            </table>
+          </div>
+          <div id="decisions-pagination" class="pagination"></div>
         </div>
-        <div class="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                <th>IP</th>
-                <th>Type</th>
-                <th>Scenario</th>
-                <th>Origin</th>
-                <th>Duration</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody id="decisions-body"></tbody>
-          </table>
-        </div>
-        <div id="decisions-pagination" class="pagination"></div>
       </section>
 
       <section id="tab-alerts" class="tab-panel">
