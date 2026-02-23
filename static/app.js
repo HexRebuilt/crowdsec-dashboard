@@ -89,7 +89,14 @@ function showLoginPage() {
   document.getElementById('login-error').classList.add('hidden');
   document.getElementById('username').value = '';
   document.getElementById('password').value = '';
-  document.getElementById('username').focus();
+  
+  if (state.auth.method === 'auth0') {
+    document.getElementById('login-form').classList.add('hidden');
+    document.getElementById('sso-section').classList.remove('hidden');
+  } else {
+    document.getElementById('login-form').classList.remove('hidden');
+    document.getElementById('username').focus();
+  }
 }
 
 function showApp() {

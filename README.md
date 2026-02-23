@@ -7,7 +7,7 @@ A modern, lightweight web dashboard for CrowdSec with Apple-inspired design, bui
 - **Real-time monitoring** - Active bans, alerts, and event timeline
 - **Smart notifications** - Apprise integration with threshold filtering and IP cooldowns
 - **Apple-inspired UI** - Modern dark theme with smooth animations
-- **Authentication** - Username/password or Auth0 SSO with password management
+- **Authentication** - Username/password or OIDC SSO (Auth0, Authentik, etc.) with password management
 - **Tooltips** - Helpful explanations for non-technical users
 - **API or Embedded mode** - Use external Apprise API or built-in notifications
 - **Connection management** - Test and monitor connections from UI
@@ -40,10 +40,11 @@ CROWDSEC_API_KEY=your_api_key_here
 AUTH_USERNAME=admin
 AUTH_PASSWORD=your_secure_password
 
-# Option 2: Auth0 (disables password login)
+# Option 2: OIDC SSO (Auth0, Authentik, etc.)
 # AUTH0_DOMAIN=your-tenant.auth0.com
 # AUTH0_CLIENT_ID=your_client_id
 # AUTH0_CLIENT_SECRET=your_client_secret
+# APP_URL=https://your-dashboard.example.com
 ```
 
 ### 3. Deploy with Docker Compose
@@ -54,6 +55,20 @@ docker compose up -d --build
 
 Open http://localhost:5000
 
+## Deployment Notes
+
+### Same Machine (Default)
+
+By default, this container is designed to run on the same machine as CrowdSec. The `CROWDSEC_URL` defaults to `http://crowdsec:8080`, which works when both containers are in the same Docker network.
+
+### Different Machine
+
+If running on a different machine, set `CROWDSEC_URL` to the CrowdSec LAPI address:
+
+```env
+CROWDSEC_URL=http://your-crowdsec-host:8080
+```
+
 ## Authentication
 
 The dashboard supports two authentication methods:
@@ -62,15 +77,29 @@ The dashboard supports two authentication methods:
 
 Set `AUTH_USERNAME` and `AUTH_PASSWORD` in your `.env` file. Users can change their password from the Settings tab.
 
-### Auth0 SSO
+### OIDC SSO (Auth0, Authentik, etc.)
 
-When Auth0 is configured, password login is automatically disabled. Users authenticate via Auth0's hosted login page.
+When OIDC is configured, password login is automatically disabled. Users authenticate via the SSO provider.
 
-To set up Auth0:
-1. Create a Single Page Application in Auth0
-2. Add your domain to Allowed Callback URLs: `https://your-domain/callback`
-3. Add your domain to Allowed Logout URLs and Allowed Web Origins
-4. Set the environment variables in `.env`
+To set up OIDC:
+1. Create an application in your OIDC provider (Auth0, Authentik, Keycloak, etc.)
+2. Add your domain to Redirect URIs: `https://your-domain/callback`
+3. Set the environment variables in `.env`:
+   - `AUTH0_DOMAIN` - The OIDC issuer URL or Auth0 tenant domain
+   - `AUTH0_CLIENT_ID` - Application client ID
+   - `AUTH0_CLIENT_SECRET` - Application client secret
+   - `APP_URL` - Your dashboard's public URL (required for callback)
+
+#### Authentik Example
+
+```env
+AUTH0_DOMAIN=https://auth.example.com/application/o/your-app/.well-known/openid-configuration
+AUTH0_CLIENT_ID=your_client_id
+AUTH0_CLIENT_SECRET=your_client_secret
+APP_URL=https://crowdsec.example.com
+```
+
+In Authentik, add Redirect URI: `https://crowdsec.example.com/callback`
 
 ## Configuration
 
@@ -78,13 +107,15 @@ To set up Auth0:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CROWDSEC_URL` | `http://crowdsec:8080` | CrowdSec LAPI URL |
+| `CROWDSEC_URL` | `http://crowdsec:8080` | CrowdSec LAPI URL (change if not on same machine) |
 | `CROWDSEC_API_KEY` | - | Bouncer API key (required) |
 | `AUTH_USERNAME` | - | Login username |
 | `AUTH_PASSWORD` | - | Login password |
-| `AUTH0_DOMAIN` | - | Auth0 tenant domain |
-| `AUTH0_CLIENT_ID` | - | Auth0 application client ID |
-| `AUTH0_CLIENT_SECRET` | - | Auth0 application client secret |
+| `AUTH_SECRET_KEY` | (random) | Session signing key |
+| `AUTH0_DOMAIN` | - | OIDC issuer URL or Auth0 tenant domain |
+| `AUTH0_CLIENT_ID` | - | OIDC application client ID |
+| `AUTH0_CLIENT_SECRET` | - | OIDC application client secret |
+| `APP_URL` | - | Dashboard public URL (required for OIDC callback) |
 | `APPRISE_API_URL` | - | External Apprise API URL |
 | `APPRISE_API_KEY` | - | Apprise API authentication key |
 | `APPRISE_CONFIG_KEY` | `crowdsec-dashboard` | Config key in Apprise API |
@@ -97,6 +128,7 @@ To set up Auth0:
 | `NOTIFY_COOLDOWN` | `3600` | Seconds before re-notifying same IP |
 | `DIGEST_INTERVAL` | `0` | Batch interval (0 = immediate) |
 | `LOG_LEVEL` | `INFO` | Logging level |
+| `UNSECURE` | `false` | Disable authentication (not recommended) |
 
 ## Project Structure
 
