@@ -22,7 +22,6 @@
 - [x] Add tooltips for decision fields (type, scenario, origin)
 - [x] Update README with documentation
 - [x] Add pie charts for data visualization
-- [x] Add time filter (day, week, month, all)
 - [x] Add statistics row with key metrics
 - [x] Show Auth0/Authentik configuration in settings
 
@@ -97,10 +96,8 @@
 
 ## Chart Data Flow
 
-1. User selects time period (day/week/month/all)
-2. Frontend calls `/api/statistics?period=X`
-3. Backend filters data by time period
-4. Returns aggregated data for charts:
+1. Frontend calls `/api/statistics`
+2. Backend returns aggregated data for charts:
    - Decisions by type (ban, captcha, etc.)
    - Decisions by origin (crowdsec, manual, lists)
    - Top scenarios triggered
