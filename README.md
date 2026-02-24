@@ -6,12 +6,13 @@ A modern, lightweight web dashboard for CrowdSec with Apple-inspired design, bui
 
 - **Real-time monitoring** - Active bans, alerts, and event timeline
 - **Smart notifications** - Apprise integration with threshold filtering and IP cooldowns
-- **Apple-inspired UI** - Modern dark theme with smooth animations
+- **Apple-inspired UI** - Modern dark/light theme with smooth animations and automatic system preference detection
 - **Authentication** - Username/password or OIDC SSO (Auth0, Authentik, etc.) with password management
 - **Tooltips** - Helpful explanations for non-technical users
 - **API or Embedded mode** - Use external Apprise API or built-in notifications
 - **Connection management** - Test and monitor connections from UI
 - **One-click unban** - Remove decisions directly from dashboard
+- **Time filtering** - Filter statistics by all time, month, week, or day
 
 ## Quick Start
 
@@ -181,10 +182,16 @@ crowdsec-dashboard/
 
 The dashboard provides helpful tooltips for non-technical users:
 
-- **Type**: Explains ban vs captcha vs throttle actions
 - **Scenario**: Describes what attack pattern was detected
-- **Origin**: Shows where the decision came from (CrowdSec, manual, lists)
-- **Duration**: How long the block will remain active
+- **When**: When the ban was created (relative time)
+
+## Theme
+
+The dashboard supports both dark and light themes:
+
+- **Automatic mode**: By default, the theme follows your system preference
+- **Manual toggle**: Click the sun/moon icon in the header or login page to override
+- **Persistence**: Your manual choice is saved in localStorage
 
 ## Apprise URLs
 

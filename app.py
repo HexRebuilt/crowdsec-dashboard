@@ -378,16 +378,27 @@ def fetch_decisions():
             decisions = r.json() or []
             transformed = []
             for d in decisions:
+                until_str = d.get("until")
+                created_at = d.get("created_at") or d.get("start_at")
+                if not created_at and until_str:
+                    try:
+                        until_dt = datetime.fromisoformat(until_str.replace("Z", "+00:00"))
+                        duration_val = d.get("duration")
+                        if duration_val:
+                            created_dt = until_dt - timedelta(seconds=int(duration_val))
+                            created_at = created_dt.isoformat()
+                    except:
+                        pass
                 transformed.append({
                     "id": d.get("id"),
                     "ip": d.get("value", "—"),
                     "type": d.get("type", "ban"),
                     "scenario": d.get("scenario", "—"),
                     "origin": d.get("origin", "—"),
-                    "duration": _format_duration(d.get("until")),
-                    "until": d.get("until"),
+                    "duration": _format_duration(until_str),
+                    "until": until_str,
                     "value": d.get("value"),
-                    "created_at": d.get("created_at") or d.get("start_at"),
+                    "created_at": created_at,
                 })
             return transformed
         log.warning("GET /v1/decisions -> %s", r.status_code)

@@ -24,14 +24,29 @@ const state = {
   }
 };
 
+function getSystemTheme() {
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
 function getTheme() {
-  return localStorage.getItem('theme') || 'dark';
+  const saved = localStorage.getItem('theme');
+  if (saved) return saved;
+  return getSystemTheme();
 }
 
 function setTheme(theme) {
   document.documentElement.setAttribute('data-theme', theme);
   localStorage.setItem('theme', theme);
   updateThemeIcons(theme);
+}
+
+function initThemeListener() {
+  const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+  mediaQuery.addEventListener('change', e => {
+    if (!localStorage.getItem('theme')) {
+      setTheme(e.matches ? 'dark' : 'light');
+    }
+  });
 }
 
 function toggleTheme() {
@@ -604,7 +619,7 @@ function updateDecisionsUI() {
   const page = state.decisions.slice(start, end);
   
   if (page.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:40px">No active bans</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:40px">No active bans</td></tr>';
     document.getElementById('decisions-pagination').innerHTML = '';
     return;
   }
@@ -612,10 +627,7 @@ function updateDecisionsUI() {
   tbody.innerHTML = page.map(d => `
     <tr>
       <td class="ip-cell">${d.ip || '—'}</td>
-      <td><span class="type-${d.type || 'ban'}">${d.type || 'ban'}</span></td>
       <td>${d.scenario || '—'}</td>
-      <td>${d.origin || '—'}</td>
-      <td>${d.duration || '—'}</td>
       <td>${timeAgo(d.created_at)}</td>
       <td><button class="btn btn-danger btn-sm" onclick="deleteDecision('${d.ip}')">Delete</button></td>
     </tr>
@@ -908,6 +920,7 @@ async function initApp() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  initThemeListener();
   setTheme(getTheme());
   
   document.getElementById('login-form').addEventListener('submit', handleLogin);
