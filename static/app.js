@@ -8,7 +8,6 @@ const state = {
   decisionsPerPage: 50,
   decisionsSearch: '',
   alertsSearch: '',
-  currentPeriod: 'all',
   charts: {},
   auth: {
     enabled: false,
@@ -634,7 +633,6 @@ function updateDecisionsUI() {
     <tr>
       <td class="ip-cell">${d.ip || '—'}</td>
       <td>${d.scenario || '—'}</td>
-      <td>${timeAgo(d.created_at)}</td>
       <td><button class="btn btn-danger btn-sm" onclick="deleteDecision('${d.ip}')">Delete</button></td>
     </tr>
   `).join('');
@@ -805,7 +803,7 @@ async function deleteDecision(ip) {
 
 async function loadStatistics() {
   try {
-    const stats = await api(`/api/statistics?period=${state.currentPeriod}`);
+    const stats = await api('/api/statistics');
     updateCharts(stats);
     document.getElementById('stat-bans').textContent = stats.decisions.total;
     document.getElementById('stat-alerts').textContent = stats.alerts.total;
@@ -874,17 +872,6 @@ function setupTabs() {
   });
 }
 
-function setupTimeFilter() {
-  document.querySelectorAll('.time-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.time-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      state.currentPeriod = btn.dataset.period;
-      loadStatistics();
-    });
-  });
-}
-
 function setupSearch() {
   document.getElementById('decisions-search').addEventListener('input', e => {
     state.decisionsSearch = e.target.value;
@@ -900,7 +887,6 @@ function setupSearch() {
 
 async function initApp() {
   setupTabs();
-  setupTimeFilter();
   setupSearch();
   initResizableColumns();
   

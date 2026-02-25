@@ -22,11 +22,12 @@
 - [x] Add tooltips for decision fields (type, scenario, origin)
 - [x] Update README with documentation
 - [x] Add pie charts for data visualization
-- [x] Add time filter (day, week, month, all) with proper empty data handling
-- [x] Add "When" column to decisions table
 - [x] Add statistics row with key metrics
 - [x] Add APPRISE_CONFIG_URL support for remote config fetching
 - [x] Show Auth0/Authentik configuration in settings
+- [x] Add automatic light/dark mode based on browser/system preference
+- [x] Remove time filter (CrowdSec API doesn't provide created_at data)
+- [x] Remove "When" column (CrowdSec API doesn't provide timestamp data)
 
 ## Upcoming Tasks
 
