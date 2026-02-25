@@ -93,3 +93,74 @@ class TestAppriseEndpoints:
     def test_apprise_status_endpoint_exists(self, client):
         response = client.get('/api/apprise/status')
         assert response.status_code in [200, 500]
+
+
+class TestAuthStatusEndpoint:
+    def test_auth_status_exists(self, client):
+        response = client.get('/api/auth/status')
+        assert response.status_code == 200
+
+    def test_auth_status_returns_auth_method(self, client):
+        response = client.get('/api/auth/status')
+        data = json.loads(response.data)
+        assert 'method' in data
+        assert 'enabled' in data
+
+    def test_auth_status_includes_auth0_when_configured(self, client):
+        response = client.get('/api/auth/status')
+        data = json.loads(response.data)
+        if data.get('method') == 'auth0':
+            assert 'auth0_domain' in data
+            assert 'auth0_client_id' in data
+
+
+class TestAuthConfigEndpoint:
+    def test_auth_config_exists(self, client):
+        response = client.get('/api/auth/config')
+        assert response.status_code == 200
+
+    def test_auth_config_returns_dict(self, client):
+        response = client.get('/api/auth/config')
+        data = json.loads(response.data)
+        assert isinstance(data, dict)
+
+    def test_auth_config_includes_auth0_settings(self, client):
+        response = client.get('/api/auth/config')
+        data = json.loads(response.data)
+        auth = data.get('auth0', {})
+        if auth.get('enabled'):
+            assert 'domain' in auth
+            assert 'client_id' in auth
+
+
+class TestAuthCallbackEndpoint:
+    def test_auth_callback_requires_code(self, client):
+        response = client.post('/api/auth/callback',
+                               json={},
+                               content_type='application/json')
+        assert response.status_code == 400
+
+    def test_auth_callback_requires_redirect_uri(self, client):
+        response = client.post('/api/auth/callback',
+                               json={'code': 'test'},
+                               content_type='application/json')
+        assert response.status_code == 400
+
+    def test_auth_callback_rejects_invalid_code(self, client):
+        response = client.post('/api/auth/callback',
+                               json={'code': 'invalid_code', 'redirect_uri': 'http://localhost/callback'},
+                               content_type='application/json')
+        data = json.loads(response.data)
+        assert 'error' in data
+
+
+class TestAuthLogoutEndpoint:
+    def test_auth_logout_requires_auth(self, client):
+        response = client.post('/api/auth/logout')
+        assert response.status_code in [401, 403]
+
+
+class TestAuthCheckEndpoint:
+    def test_auth_check_requires_auth(self, client):
+        response = client.get('/api/auth/check')
+        assert response.status_code in [401, 403]
