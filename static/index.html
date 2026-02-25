@@ -103,7 +103,6 @@
 
     <nav class="tabs tabs-top">
       <button class="tab active" data-tab="dashboard">Dashboard</button>
-      <button class="tab" data-tab="alerts">Alerts</button>
       <button class="tab" data-tab="alarms">Alarms <span id="alarms-badge" class="badge badge-critical" style="display:none">0</span></button>
       <button class="tab" data-tab="settings">Settings</button>
     </nav>
@@ -200,27 +199,6 @@
             </table>
           </div>
           <div id="decisions-pagination" class="pagination"></div>
-        </div>
-      </section>
-
-      <section id="tab-alerts" class="tab-panel">
-        <div class="section-header">
-          <h2>Recent Alerts <span id="alerts-count" class="count-badge"></span></h2>
-          <input type="text" id="alerts-search" class="search-input" placeholder="Search...">
-        </div>
-        <div class="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                <th>IP</th>
-                <th>Scenario</th>
-                <th>Events</th>
-                <th>Message</th>
-                <th>Time</th>
-              </tr>
-            </thead>
-            <tbody id="alerts-body"></tbody>
-          </table>
         </div>
       </section>
 

@@ -2,12 +2,10 @@ const state = {
   status: {},
   config: {},
   decisions: [],
-  alerts: [],
   appriseStatus: {},
   decisionsPage: 1,
   decisionsPerPage: 50,
   decisionsSearch: '',
-  alertsSearch: '',
   charts: {},
   auth: {
     enabled: false,
@@ -430,16 +428,6 @@ async function loadDecisions() {
   }
 }
 
-async function loadAlerts() {
-  try {
-    const q = state.alertsSearch;
-    state.alerts = await api(`/api/alerts${q ? '?q=' + encodeURIComponent(q) : ''}`);
-    updateAlertsUI();
-  } catch (e) {
-    console.error('Failed to load alerts:', e);
-  }
-}
-
 async function loadAppriseStatus() {
   try {
     state.appriseStatus = await api('/api/apprise/status');
@@ -567,7 +555,6 @@ function updateStatusUI() {
   }
   
   document.getElementById('decisions-count').textContent = s.total_bans || 0;
-  document.getElementById('alerts-count').textContent = s.total_alerts || 0;
   
   document.getElementById('connection-status').innerHTML = `
     <div class="status-line">
@@ -721,25 +708,6 @@ function goToPage(page) {
   updateDecisionsUI();
 }
 
-function updateAlertsUI() {
-  const tbody = document.getElementById('alerts-body');
-  
-  if (state.alerts.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:40px">No alerts</td></tr>';
-    return;
-  }
-  
-  tbody.innerHTML = state.alerts.slice(0, 100).map(a => `
-    <tr>
-      <td class="ip-cell">${(a.source || {}).ip || '—'}</td>
-      <td>${a.scenario || '—'}</td>
-      <td>${a.events_count || 0}</td>
-      <td>${(a.message || '').substring(0, 60)}${a.message && a.message.length > 60 ? '...' : ''}</td>
-      <td>${timeAgo(a.created_at)}</td>
-    </tr>
-  `).join('');
-}
-
 function updateAppriseUI() {
   const s = state.appriseStatus;
   document.getElementById('apprise-status').innerHTML = `
@@ -807,7 +775,6 @@ async function loadStatistics() {
     const stats = await api('/api/statistics');
     updateCharts(stats);
     document.getElementById('stat-bans').textContent = stats.decisions.total;
-    document.getElementById('stat-alerts').textContent = stats.alerts.total;
     document.getElementById('stat-sent').textContent = state.status.sent_count || 0;
     document.getElementById('stat-suppressed').textContent = state.status.suppressed_count || 0;
   } catch (e) {
@@ -883,23 +850,18 @@ function setupSearch() {
     state.decisionsPage = 1;
     loadDecisions();
   });
-  
-  document.getElementById('alerts-search').addEventListener('input', e => {
-    state.alertsSearch = e.target.value;
-    loadAlerts();
-  });
 }
 
 async function initApp() {
   setupTabs();
   setupSearch();
+  setupAutoRefresh();
   initResizableColumns();
   
   await Promise.all([
     loadStatus(),
     loadConfig(),
     loadDecisions(),
-    loadAlerts(),
     loadAppriseStatus(),
     loadAppriseUrls(),
     loadAuthProviderSettings()
@@ -910,7 +872,6 @@ async function initApp() {
   setInterval(loadStatus, 30000);
   setInterval(() => {
     loadDecisions();
-    loadAlerts();
     loadAlarms();
   }, 30000);
   

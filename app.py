@@ -1406,7 +1406,6 @@ def api_status():
         "apprise_configured": apprise_configured,
         "unsecure_mode":      UNSECURE,
         "total_bans":         len(state["decisions"]),
-        "total_alerts":       len(state["alerts"]),
         "sent_count":         state["sent_count"],
         "suppressed_count":   state["suppressed_count"],
         "digest_pending":     len(state["digest_buffer"]),
@@ -1420,7 +1419,6 @@ def api_status():
 @audit_logged("api_statistics")
 def api_statistics():
     decisions = state["decisions"]
-    alerts = state["alerts"]
     events = list(state["events"])
     
     decisions_by_type = {}
@@ -1438,11 +1436,6 @@ def api_statistics():
         o = d.get("origin", "unknown")
         decisions_by_origin[o] = decisions_by_origin.get(o, 0) + 1
     
-    alerts_by_scenario = {}
-    for a in alerts:
-        s = a.get("scenario", "unknown")
-        alerts_by_scenario[s] = alerts_by_scenario.get(s, 0) + 1
-    
     events_by_type = {}
     for e in events:
         t = e.get("type", "unknown")
@@ -1455,10 +1448,6 @@ def api_statistics():
             "by_scenario": decisions_by_scenario,
             "by_origin": decisions_by_origin,
         },
-        "alerts": {
-            "total": len(alerts),
-            "by_scenario": alerts_by_scenario,
-        },
         "events": {
             "total": len(events),
             "by_type": events_by_type,
@@ -1467,10 +1456,6 @@ def api_statistics():
             "decisions": [
                 {"time": d.get("created_at"), "type": d.get("type"), "ip": d.get("value")}
                 for d in decisions[:50]
-            ],
-            "alerts": [
-                {"time": a.get("start_at"), "scenario": a.get("scenario"), "ip": (a.get("source") or {}).get("ip")}
-                for a in alerts[:50]
             ],
         }
     })
@@ -1510,17 +1495,6 @@ def api_decisions():
     data = state["decisions"]
     if q:
         data = [d for d in data if q in json.dumps(d).lower()]
-    return jsonify(data)
-
-@app.route("/api/alerts")
-@rate_limit
-@auth_required
-@audit_logged("api_alerts")
-def api_alerts():
-    q = request.args.get("q", "").lower()
-    data = state["alerts"]
-    if q:
-        data = [a for a in data if q in json.dumps(a).lower()]
     return jsonify(data)
 
 @app.route("/api/alarms")

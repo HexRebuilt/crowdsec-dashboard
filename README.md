@@ -4,7 +4,7 @@ A modern, lightweight web dashboard for CrowdSec with Apple-inspired design, bui
 
 ## Features
 
-- **Real-time monitoring** - Active bans, alerts, and event timeline
+- **Real-time monitoring** - Active bans, actionable alarms, and event timeline
 - **Smart notifications** - Apprise integration with threshold filtering and IP cooldowns
 - **Apple-inspired UI** - Modern dark/light theme with smooth animations and automatic browser/system preference detection
 - **Authentication** - Username/password or OIDC SSO (Auth0, Authentik, etc.) with password management
@@ -131,6 +131,23 @@ In Authentik, add Redirect URI: `https://crowdsec.example.com/callback`
 | `LOG_LEVEL` | `INFO` | Logging level |
 | `UNSECURE` | `false` | Disable authentication (not recommended) |
 
+## Alerts vs Alarms
+
+The dashboard distinguishes between two concepts:
+
+- **Alerts** (internal): Raw security events detected by CrowdSec. These are fetched automatically but not displayed in a separate tab since they can be voluminous and require interpretation.
+
+- **Alarms** (displayed): Actionable items derived from alerts and other data sources. The Alarms tab shows security issues that require attention, including:
+  - New attack sources detected
+  - Alerts near threshold needing manual review
+  - Failed login patterns
+  - API connection errors
+  - Geo-anomalies
+  - Rate limit warnings
+  - Whitelist expiry warnings
+
+This design keeps the interface focused on actionable items rather than raw data.
+
 ## Project Structure
 
 ```
@@ -168,7 +185,7 @@ crowdsec-dashboard/
 | `GET` | `/api/config` | Runtime configuration |
 | `PATCH` | `/api/config` | Update configuration |
 | `GET` | `/api/decisions` | Active bans |
-| `GET` | `/api/alerts` | Recent alerts |
+| `GET` | `/api/alarms` | Actionable alarms requiring attention |
 | `GET` | `/api/events` | Event timeline |
 | `DELETE` | `/api/unban?id=N` | Remove decision |
 | `GET` | `/api/apprise/status` | Apprise status |
