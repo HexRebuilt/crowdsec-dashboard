@@ -14,6 +14,7 @@ import threading
 import time
 import hashlib
 import secrets
+import redis
 from datetime import datetime, timedelta, timezone
 from collections import deque
 from functools import wraps
@@ -23,9 +24,22 @@ import apprise
 from flask import Flask, jsonify, request, send_from_directory, make_response
 from flask_cors import CORS
 
-# ---------------------------------------------------------------------------
+# Redis configuration
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+REDIS_TIMEOUT = int(os.getenv("REDIS_TIMEOUT", "300"))
+
+# Rate limiting configuration
+RATE_LIMIT_REQUESTS = int(os.getenv("RATE_LIMIT_REQUESTS", "100"))
+RATE_LIMIT_WINDOW = int(os.getenv("RATE_LIMIT_WINDOW", "60"))
+
+# Security configuration
+CSRF_SECRET_KEY = os.getenv("CSRF_SECRET_KEY", secrets.token_hex(32))
+
+# Audit logging configuration
+AUDIT_LOG_ENABLED = os.getenv("AUDIT_LOG_ENABLED", "true").lower() == "true"
+AUDIT_LOG_FILE = os.getenv("AUDIT_LOG_FILE", "/var/log/crowdsec-dashboard/audit.log")
+
 # Boot-time config (from env)
-# ---------------------------------------------------------------------------
 CROWDSEC_URL       = os.getenv("CROWDSEC_URL", "http://crowdsec:8080")
 CROWDSEC_API_KEY   = os.getenv("CROWDSEC_API_KEY", "")
 APPRISE_URLS       = os.getenv("APPRISE_URLS", "")
@@ -135,34 +149,131 @@ AUTH_ENABLED = AUTH_CREDENTIALS_ENABLED or AUTH_AUTH0_ENABLED
 app = Flask(__name__, static_folder="static")
 CORS(app, supports_credentials=True)
 
-# Session storage (simple in-memory, use Redis for production)
-sessions = {}
+# Rate limiting middleware
+class RateLimiter:
+    def __init__(self):
+        self.redis = redis.Redis.from_url(REDIS_URL, decode_responses=True)
+        self.request_count = 0
+        self.window_start = time.time()
+    
+    def is_allowed(self, identifier):
+        current_time = time.time()
+        window_key = f"rate_limit:{identifier}:{int(current_time // RATE_LIMIT_WINDOW)}"
+        
+        try:
+            count = self.redis.incr(window_key)
+            if count == 1:
+                self.redis.expire(window_key, RATE_LIMIT_WINDOW)
+            
+            if count > RATE_LIMIT_REQUESTS:
+                return False
+            return True
+        except redis.RedisError as e:
+            log.warning("Rate limiting Redis error: %s", e)
+            return True
+    
+    def get_count(self, identifier):
+        current_time = time.time()
+        window_key = f"rate_limit:{identifier}:{int(current_time // RATE_LIMIT_WINDOW)}"
+        try:
+            return int(self.redis.get(window_key) or 0)
+        except redis.RedisError:
+            return 0
 
-# ---------------------------------------------------------------------------
-# Auth helpers
-# ---------------------------------------------------------------------------
-def hash_password(password):
-    return hashlib.sha256(password.encode()).hexdigest()
+# Initialize rate limiter
+rate_limiter = RateLimiter()
 
-def create_session(username):
-    token = secrets.token_urlsafe(32)
-    sessions[token] = {
+def rate_limit(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        client_ip = request.remote_addr
+        user_agent = request.headers.get("User-Agent", "unknown")
+        identifier = f"{client_ip}:{user_agent}"
+        
+        if not rate_limiter.is_allowed(identifier):
+            log.warning("Rate limit exceeded for %s", client_ip)
+            return jsonify({
+                "error": "Rate limit exceeded",
+                "retry_after": RATE_LIMIT_WINDOW
+            }), 429
+        
+        response = f(*args, **kwargs)
+        if isinstance(response, tuple) and len(response) == 3:
+            resp, status, headers = response
+            headers["X-RateLimit-Limit"] = str(RATE_LIMIT_REQUESTS)
+            headers["X-RateLimit-Remaining"] = str(max(0, RATE_LIMIT_REQUESTS - rate_limiter.get_count(identifier)))
+            headers["X-RateLimit-Reset"] = str(int((time.time() // RATE_LIMIT_WINDOW + 1) * RATE_LIMIT_WINDOW))
+            return resp, status, headers
+        elif hasattr(response, "headers"):
+            response.headers["X-RateLimit-Limit"] = str(RATE_LIMIT_REQUESTS)
+            response.headers["X-RateLimit-Remaining"] = str(max(0, RATE_LIMIT_REQUESTS - rate_limiter.get_count(identifier)))
+            response.headers["X-RateLimit-Reset"] = str(int((time.time() // RATE_LIMIT_WINDOW + 1) * RATE_LIMIT_WINDOW))
+        return response
+    return decorated
+
+# IP whitelist configuration
+IP_WHITELIST_ENABLED = os.getenv("IP_WHITELIST_ENABLED", "false").lower() == "true"
+IP_WHITELIST = os.getenv("IP_WHITELIST", "").split(",")
+IP_WHITELIST = [ip.strip() for ip in IP_WHITELIST if ip.strip()]
+
+# IP whitelist decorator
+def ip_whitelist_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not IP_WHITELIST_ENABLED:
+            return f(*args, **kwargs)
+        
+        client_ip = request.remote_addr
+        if client_ip in IP_WHITELIST:
+            return f(*args, **kwargs)
+        
+        log.warning("IP whitelist blocked access from %s", client_ip)
+        return jsonify({"error": "Access denied", "message": "IP not in whitelist"}), 403
+    return decorated
+
+# Audit logging functions
+def audit_log(username, action, details=None):
+    if not AUDIT_LOG_ENABLED:
+        return
+    
+    log_entry = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "username": username,
-        "created": time.time(),
-        "expires": time.time() + 86400
+        "action": action,
+        "details": details or {},
+        "client_ip": request.remote_addr if "request" in globals() else "unknown",
+        "user_agent": request.headers.get("User-Agent", "unknown") if "request" in globals() else "unknown"
     }
-    return token
+    
+    try:
+        with open(AUDIT_LOG_FILE, "a") as f:
+            f.write(json.dumps(log_entry) + "\n")
+    except Exception as e:
+        log.error("Failed to write audit log: %s", e)
 
-def validate_session(token):
-    if not token:
-        return None
-    session = sessions.get(token)
-    if not session:
-        return None
-    if time.time() > session["expires"]:
-        sessions.pop(token, None)
-        return None
-    return session["username"]
+# Audit logging decorator
+def audit_logged(action):
+    def decorator(f):
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            token = get_token_from_request()
+            username = validate_session(token) if token else "anonymous"
+            result = f(*args, **kwargs)
+            
+            # Log successful actions
+            if isinstance(result, tuple):
+                status_code = result[1] if len(result) > 1 else 200
+                if status_code < 400:
+                    audit_log(username, action, {"status": status_code})
+            elif hasattr(result, "status_code"):
+                if result.status_code < 400:
+                    audit_log(username, action, {"status": result.status_code})
+            else:
+                audit_log(username, action, {"status": 200})
+            
+            return result
+        return decorated
+    return decorator
 
 def get_token_from_request():
     auth_header = request.headers.get("Authorization", "")
@@ -704,6 +815,9 @@ def _prune_cooldowns():
 # Auth API
 # ---------------------------------------------------------------------------
 @app.route("/api/auth/status")
+@rate_limit
+@ip_whitelist_required
+@audit_logged("auth_status")
 def api_auth_status():
     oidc = get_oidc_config()
     return jsonify({
@@ -718,7 +832,10 @@ def api_auth_status():
     })
 
 @app.route("/api/auth/config")
+@rate_limit
 @auth_required
+@ip_whitelist_required
+@audit_logged("auth_config")
 def api_auth_config():
     return jsonify({
         "enabled": AUTH_ENABLED,
@@ -736,6 +853,9 @@ def api_auth_config():
     })
 
 @app.route("/api/auth/login", methods=["POST"])
+@rate_limit
+@ip_whitelist_required
+@audit_logged("auth_login")
 def api_auth_login():
     data = request.get_json(force=True, silent=True) or {}
     
@@ -789,6 +909,9 @@ def api_auth_login():
     return jsonify({"error": "Auth not configured"}), 400
 
 @app.route("/api/auth/callback", methods=["POST"])
+@rate_limit
+@ip_whitelist_required
+@audit_logged("auth_callback")
 def api_auth_callback():
     data = request.get_json(force=True, silent=True) or {}
     code = data.get("code")
@@ -848,6 +971,9 @@ def api_auth_callback():
         return jsonify({"error": str(e)}), 500
 
 @app.route("/api/auth/logout", methods=["POST"])
+@rate_limit
+@auth_required
+@audit_logged("auth_logout")
 def api_auth_logout():
     token = get_token_from_request()
     if token:
@@ -858,14 +984,18 @@ def api_auth_logout():
     return response
 
 @app.route("/api/auth/check", methods=["GET"])
+@rate_limit
 @auth_required
+@audit_logged("auth_check")
 def api_auth_check():
     token = get_token_from_request()
     username = validate_session(token)
     return jsonify({"authenticated": True, "username": username})
 
 @app.route("/api/auth/password", methods=["POST"])
+@rate_limit
 @auth_required
+@audit_logged("auth_password_change")
 def api_auth_change_password():
     if not AUTH_CREDENTIALS_ENABLED or AUTH_AUTH0_ENABLED:
         return jsonify({"error": "Password change not available"}), 400
@@ -901,7 +1031,9 @@ def api_auth_change_password():
 # REST API
 # ---------------------------------------------------------------------------
 @app.route("/api/status")
+@rate_limit
 @auth_required
+@audit_logged("api_status")
 def api_status():
     next_digest = None
     if cfg["digest_interval"] > 0:
@@ -935,7 +1067,9 @@ def api_status():
     })
 
 @app.route("/api/statistics")
+@rate_limit
 @auth_required
+@audit_logged("api_statistics")
 def api_statistics():
     decisions = state["decisions"]
     alerts = state["alerts"]
@@ -994,11 +1128,13 @@ def api_statistics():
     })
 
 @app.route("/api/config", methods=["GET"])
+@rate_limit
 @auth_required
 def api_config_get():
     return jsonify(cfg)
 
 @app.route("/api/config", methods=["PATCH"])
+@rate_limit
 @auth_required
 def api_config_patch():
     data = request.get_json(force=True, silent=True) or {}
@@ -1018,7 +1154,9 @@ def api_config_patch():
     return jsonify({"ok": True, "updated": updated, "config": cfg})
 
 @app.route("/api/decisions")
+@rate_limit
 @auth_required
+@audit_logged("api_decisions")
 def api_decisions():
     q = request.args.get("q", "").lower()
     data = state["decisions"]
@@ -1027,7 +1165,9 @@ def api_decisions():
     return jsonify(data)
 
 @app.route("/api/alerts")
+@rate_limit
 @auth_required
+@audit_logged("api_alerts")
 def api_alerts():
     q = request.args.get("q", "").lower()
     data = state["alerts"]
@@ -1036,7 +1176,9 @@ def api_alerts():
     return jsonify(data)
 
 @app.route("/api/events")
+@rate_limit
 @auth_required
+@audit_logged("api_events")
 def api_events():
     limit = int(request.args.get("limit", 60))
     ftype = request.args.get("type", "")
@@ -1046,18 +1188,24 @@ def api_events():
     return jsonify(data[:limit])
 
 @app.route("/api/metrics")
+@rate_limit
 @auth_required
+@audit_logged("api_metrics")
 def api_metrics():
     return jsonify(state["metrics"])
 
 @app.route("/api/test-notify", methods=["POST"])
+@rate_limit
 @auth_required
+@audit_logged("api_test_notify")
 def api_test_notify():
     _send_now("CrowdSec Dashboard - Test", "Test notification working!\nThresholds configured correctly.")
     return jsonify({"ok": True})
 
 @app.route("/api/apprise/status")
+@rate_limit
 @auth_required
+@audit_logged("api_apprise_status")
 def api_apprise_status():
     if APPRISE_API_URL:
         try:
@@ -1089,7 +1237,9 @@ def api_apprise_status():
         })
 
 @app.route("/api/apprise/urls", methods=["GET"])
+@rate_limit
 @auth_required
+@audit_logged("api_apprise_urls_get")
 def api_apprise_urls_get():
     if APPRISE_API_URL:
         urls = _apprise_api_get_urls()
@@ -1099,7 +1249,9 @@ def api_apprise_urls_get():
         return jsonify({"mode": "embedded", "urls": urls})
 
 @app.route("/api/apprise/urls", methods=["POST"])
+@rate_limit
 @auth_required
+@audit_logged("api_apprise_urls_set")
 def api_apprise_urls_set():
     data = request.get_json(force=True, silent=True) or {}
     urls = data.get("urls", [])
@@ -1118,7 +1270,9 @@ def api_apprise_urls_set():
         return jsonify({"ok": True, "mode": "embedded", "urls": urls})
 
 @app.route("/api/system/config", methods=["GET"])
+@rate_limit
 @auth_required
+@audit_logged("api_system_config")
 def api_system_config():
     return jsonify({
         "connections": {
@@ -1140,7 +1294,9 @@ def api_system_config():
     })
 
 @app.route("/api/system/test", methods=["POST"])
+@rate_limit
 @auth_required
+@audit_logged("api_system_test")
 def api_system_test():
     results = {
         "crowdsec": {"status": "unknown", "latency_ms": None, "error": None},
@@ -1171,11 +1327,15 @@ def api_system_test():
     return jsonify(results)
 
 @app.route("/health")
+@rate_limit
+@audit_logged("health_check")
 def health_check():
     return jsonify({"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()})
 
 @app.route("/api/unban", methods=["DELETE"])
+@rate_limit
 @auth_required
+@audit_logged("api_unban")
 def api_unban():
     decision_id = request.args.get("id")
     if not decision_id:
@@ -1197,7 +1357,9 @@ def api_unban():
         return jsonify({"error": str(e)}), 500
 
 @app.route("/api/cooldowns", methods=["GET"])
+@rate_limit
 @auth_required
+@audit_logged("api_cooldowns_get")
 def api_cooldowns():
     now = time.time()
     result = []
@@ -1208,7 +1370,9 @@ def api_cooldowns():
     return jsonify(result)
 
 @app.route("/api/cooldowns", methods=["DELETE"])
+@rate_limit
 @auth_required
+@audit_logged("api_cooldowns_clear")
 def api_clear_cooldowns():
     ip = request.args.get("ip")
     if ip:
@@ -1218,14 +1382,17 @@ def api_clear_cooldowns():
     return jsonify({"ok": True})
 
 @app.route("/callback")
+@rate_limit
 def callback():
     return send_from_directory("static", "index.html")
 
 @app.route("/")
+@rate_limit
 def index():
     return send_from_directory("static", "index.html")
 
 @app.route("/<path:filename>")
+@rate_limit
 def serve_static(filename):
     response = send_from_directory("static", filename)
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
