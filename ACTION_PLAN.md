@@ -57,10 +57,10 @@ The CrowdSec Dashboard is a Flask-based web application with vanilla JavaScript 
 ## Implementation Plan
 
 ### Phase 1: Security & Stability (High Priority)
-1. Add rate limiting middleware
+1. ✅ Add rate limiting middleware
 2. Implement session timeout configuration
-3. Add audit logging system
-4. Add IP whitelist functionality
+3. ✅ Add audit logging system
+4. ✅ Add IP whitelist functionality
 5. Add CSRF protection
 6. Implement input validation
 7. Add secure password policies
