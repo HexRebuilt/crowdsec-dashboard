@@ -633,6 +633,7 @@ function updateDecisionsUI() {
     <tr>
       <td class="ip-cell">${d.ip || '—'}</td>
       <td>${d.scenario || '—'}</td>
+      <td>${timeAgo(d.created_at)}</td>
       <td><button class="btn btn-danger btn-sm" onclick="deleteDecision('${d.ip}')">Delete</button></td>
     </tr>
   `).join('');
