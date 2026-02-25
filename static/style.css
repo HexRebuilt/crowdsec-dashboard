@@ -612,6 +612,151 @@ body {
   border-radius: 11px;
 }
 
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.badge-critical {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.badge-warning {
+  background: var(--warning-bg);
+  color: var(--warning);
+}
+
+.badge-info {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.alarms-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.alarm-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  border-left: 4px solid var(--accent);
+}
+
+.alarm-card.alarm-critical {
+  border-left-color: var(--danger);
+}
+
+.alarm-card.alarm-warning {
+  border-left-color: var(--warning);
+}
+
+.alarm-card.alarm-info {
+  border-left-color: var(--accent);
+}
+
+.alarm-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.alarm-icon {
+  width: 24px;
+  height: 24px;
+  color: var(--text-secondary);
+}
+
+.alarm-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.alarm-type {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.alarm-count {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.alarm-message {
+  color: var(--text-secondary);
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.alarm-details {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.alarm-data {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.alarm-data-row {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.alarm-filters {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.select-sm {
+  padding: 6px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  color: var(--text-muted);
+}
+
+.empty-state svg {
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.empty-state p {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.empty-hint {
+  font-size: 13px;
+  margin-top: 4px;
+}
+
 .search-input {
   padding: 8px 14px;
   background: var(--surface);

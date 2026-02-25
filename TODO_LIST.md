@@ -444,7 +444,7 @@ app/
 
 ## Progress Tracking
 
-### Phase 1 Status: ✅ In Progress
+### Phase 1 Status: 🔄 In Progress (3/7 complete)
 - [x] Task 1.1: Add Rate Limiting Middleware
 - [x] Task 1.2: Implement Session Timeout Configuration
 - [x] Task 1.3: Add Audit Logging System
@@ -485,6 +485,64 @@ app/
 - [ ] Task 5.5: Add Webhook Support
 - [ ] Task 5.6: Add Multi-tenant Support
 
+### Phase 6 Status: ✅ In Progress
+- [x] Task 6.1: Set recommended default thresholds (alert: 10, ban: 50)
+- [ ] Task 6.2: Add severity indicators (Critical/Warning/Info)
+- [ ] Task 6.3: Add filtering by scenario type and IP range
+- [ ] Task 6.4: Add time range selector (1h, 6h, 24h, 7d)
+- [ ] Task 6.5: Add pagination for large alert sets
+- [ ] Task 6.6: Add "Mark as reviewed" functionality
+- [ ] Task 6.7: Add smart threshold recommendations
+- [ ] Task 6.8: Add "Under Attack" indicator
+- [ ] Task 6.9: Add alert correlation and timeline view
+- [ ] Task 6.10: Add one-click ban from alert view
+- [ ] Task 6.11: Add false positive whitelist
+- [ ] Task 6.12: Add historical alert analysis
+
+### Phase 8 Status: 🚨 Actionable Alarms - Requires User Action
+**Principle**: Only alarms requiring human decision. Keep minimal to avoid alert fatigue.
+
+- [ ] Task 8.1: Add "New Attack Sources" alarm - NEW high-risk IPs never seen before (last 30 days)
+- [ ] Task 8.2: Add "Manual Review Needed" alarm - Alerts flagged for human decision
+- [ ] Task 8.3: Add "Whitelist Expiry" alarm - Whitelists expiring within 7 days
+- [ ] Task 8.4: Add "Failed Logins Pattern" alarm - 5+ failed auth attempts from same IP in 10 min
+- [ ] Task 8.5: Add "API Connection Errors" alarm - 2+ failed connections to CrowdSec LAPI
+- [ ] Task 8.6: Add "Geo Anomalies" alarm - Attacks from countries not seen in last 30 days
+- [ ] Task 8.7: Add "Rate Limit Warnings" alarm - When app rate limits trigger
+
+### Phase 7 Status: 🔔 Reminder - Run Tests Before Docker Build
+- [ ] Task 7.1: Add unit tests for rate limiting
+- [ ] Task 7.2: Add unit tests for session management
+- [ ] Task 7.3: Add unit tests for IP whitelist
+- [ ] Task 7.4: Add unit tests for audit logging
+- [ ] Task 7.5: Add unit tests for configuration
+- [ ] Task 7.6: Add integration tests for API endpoints
+- [ ] Task 7.7: Add integration tests for authentication flow
+- [ ] Task 7.8: Add integration tests for alert processing
+- [ ] Task 7.9: Add integration tests for decision processing
+- [x] Task 7.10: Add test execution before docker build (REMINDER)
+
+---
+
+## ⚠️ CRITICAL REMINDER: Test Before Build & Deploy
+
+Before any docker build or run operation, ALWAYS follow this order:
+
+1. **Run tests first**: `pytest` or `python -m pytest`
+2. **If tests fail**: Address the failed test results before proceeding
+3. **Only after tests pass**: Build the docker container (`docker compose build`)
+4. **Only after successful build**: Run the container (`docker compose up`)
+5. **Only after successful run**: Commit and push to repository
+
+**Never skip tests to speed up deployment. Test failures indicate bugs that will cause issues in production.**
+
+### Test Failure Handling Protocol:
+- If any test fails, do NOT build or run the container
+- Fix the failing test(s) first
+- Re-run the full test suite to ensure no regressions
+- Only proceed with build/deploy after all tests pass
+- Document any test failures in commit messages if discovered during development
+
 ---
 
 ## Notes for Implementation
@@ -497,6 +555,23 @@ app/
 6. **Use feature flags** - Enable gradual rollout of new features
 7. **Monitor performance** - Track performance impact of new features
 8. **Security first** - Prioritize security features over new functionality
+
+## Alerts Best Practices
+
+### Why Alerts May Not Show:
+- Alerts are fetched from CrowdSec LAPI for the last 120 minutes (2 hours)
+- Requires CrowdSec profile with notifications enabled
+- Alerts are generated when suspicious activity meets threshold criteria
+
+### Recommended Default Thresholds:
+- **Alert Threshold**: 10 events - Prevents notification spam for single probe attempts
+- **Ban Threshold**: 50 events - Only notify on sustained attacks
+- These thresholds align with CrowdSec best practices: one failed attempt is normal, 10+ indicates an attack
+
+### Alert vs Decision:
+- **Alerts**: Detection events from CrowdSec scenarios
+- **Decisions**: Remediation actions (ban, captcha) taken by CrowdSec
+- Alerts are stored for 2 hours; decisions are stored until expiration
 
 ---
 

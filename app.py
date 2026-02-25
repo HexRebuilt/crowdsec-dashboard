@@ -237,6 +237,7 @@ def rate_limit(f):
         
         if not rate_limiter.is_allowed(identifier):
             log.warning("Rate limit exceeded for %s", client_ip)
+            track_rate_limit_warning(client_ip, request.path)
             return jsonify({
                 "error": "Rate limit exceeded",
                 "retry_after": RATE_LIMIT_WINDOW
@@ -346,8 +347,8 @@ def auth_required(f):
 cfg = {
     "notify_on_ban":      os.getenv("NOTIFY_ON_BAN", "true").lower() == "true",
     "notify_on_alert":    os.getenv("NOTIFY_ON_ALERT", "true").lower() == "true",
-    "alert_threshold":    int(os.getenv("ALERT_THRESHOLD", "5")),
-    "ban_threshold":      int(os.getenv("BAN_THRESHOLD", "0")),
+    "alert_threshold":    int(os.getenv("ALERT_THRESHOLD", "10")),
+    "ban_threshold":      int(os.getenv("BAN_THRESHOLD", "50")),
     "notify_cooldown":    int(os.getenv("NOTIFY_COOLDOWN", "3600")),
     "digest_interval":    int(os.getenv("DIGEST_INTERVAL", "0")),
     "apprise_urls":       os.getenv("APPRISE_URLS", ""),
@@ -417,7 +418,19 @@ state = {
     "digest_buffer":       [],
     "last_digest_sent":    time.time(),
     "alarm_correlations":  {},
+    "known_ips":           set(),
+    "known_countries":     set(),
+    "failed_logins":       {},
+    "api_errors":          [],
+    "whitelist_expiry":    {},
+    "rate_limit_warnings": [],
 }
+
+STATEfulness_lookback_days = 30
+FAILED_LOGIN_THRESHOLD = 5
+FAILED_LOGIN_WINDOW = 600
+API_ERROR_THRESHOLD = 2
+WHITELIST_EXPIRY_DAYS = 7
 
 # ---------------------------------------------------------------------------
 # Alarm correlation and severity logic
@@ -453,6 +466,256 @@ def _determine_alarm_severity(alert):
         return AlarmSeverity.WARNING
     else:
         return AlarmSeverity.INFO
+
+# ---------------------------------------------------------------------------
+# Actionable Alarms - Only items requiring user action
+# ---------------------------------------------------------------------------
+
+class ActionableAlarmType:
+    NEW_ATTACK_SOURCE = "new_attack_source"
+    MANUAL_REVIEW = "manual_review"
+    WHITELIST_EXPIRY = "whitelist_expiry"
+    FAILED_LOGIN_PATTERN = "failed_login_pattern"
+    API_CONNECTION_ERROR = "api_connection_error"
+    GEO_ANOMALY = "geo_anomaly"
+    RATE_LIMIT_WARNING = "rate_limit_warning"
+
+def _check_new_attack_sources(decisions):
+    new_ips = set()
+    for d in decisions:
+        ip = d.get("value")
+        if ip and ip != "—" and ip not in state["known_ips"]:
+            new_ips.add(ip)
+    
+    if new_ips:
+        state["known_ips"].update(new_ips)
+        return {
+            "type": ActionableAlarmType.NEW_ATTACK_SOURCE,
+            "severity": AlarmSeverity.WARNING,
+            "count": len(new_ips),
+            "ips": list(new_ips)[:10],
+            "message": f"{len(new_ips)} new attack source(s) detected - never seen in {STATEfulness_lookback_days} days",
+            "requires_action": True,
+        }
+    return None
+
+def _check_manual_review_alerts(alerts):
+    review_needed = []
+    for a in alerts:
+        scenario = a.get("scenario", "")
+        events_count = a.get("events_count", 0)
+        ip = (a.get("source") or {}).get("ip", "?")
+        
+        if events_count >= cfg["alert_threshold"] * 0.5 and events_count < cfg["alert_threshold"]:
+            review_needed.append({
+                "id": a.get("id"),
+                "ip": ip,
+                "scenario": scenario,
+                "events": events_count,
+            })
+    
+    if review_needed:
+        return {
+            "type": ActionableAlarmType.MANUAL_REVIEW,
+            "severity": AlarmSeverity.INFO,
+            "count": len(review_needed),
+            "alerts": review_needed[:10],
+            "message": f"{len(review_needed)} alert(s) need manual review - near threshold",
+            "requires_action": True,
+        }
+    return None
+
+def _check_failed_login_pattern():
+    now = time.time()
+    window_start = now - FAILED_LOGIN_WINDOW
+    
+    recent_failures = {
+        ip: list(timestamps)
+        for ip, timestamps in state["failed_logins"].items()
+        if any(ts > window_start for ts in timestamps)
+    }
+    
+    suspicious_ips = []
+    for ip, timestamps in recent_failures.items():
+        recent = [ts for ts in timestamps if ts > window_start]
+        if len(recent) >= FAILED_LOGIN_THRESHOLD:
+            suspicious_ips.append({"ip": ip, "attempts": len(recent), "window": f"{FAILED_LOGIN_WINDOW//60}min"})
+    
+    if suspicious_ips:
+        return {
+            "type": ActionableAlarmType.FAILED_LOGIN_PATTERN,
+            "severity": AlarmSeverity.CRITICAL,
+            "count": len(suspicious_ips),
+            "ips": suspicious_ips,
+            "message": f"{len(suspicious_ips)} IP(s) with {FAILED_LOGIN_THRESHOLD}+ failed logins in {FAILED_LOGIN_WINDOW//60} minutes",
+            "requires_action": True,
+        }
+    return None
+
+def _check_api_connection_errors():
+    now = time.time()
+    window_start = now - 300
+    
+    recent_errors = [e for e in state["api_errors"] if e.get("timestamp", 0) > window_start]
+    
+    if len(recent_errors) >= API_ERROR_THRESHOLD:
+        return {
+            "type": ActionableAlarmType.API_CONNECTION_ERROR,
+            "severity": AlarmSeverity.CRITICAL,
+            "count": len(recent_errors),
+            "errors": recent_errors[-5:],
+            "message": f"{len(recent_errors)} CrowdSec API connection failures detected - system may be unavailable",
+            "requires_action": True,
+        }
+    return None
+
+def _check_geo_anomalies(decisions):
+    current_countries = set()
+    for d in decisions:
+        country = d.get("origin", "unknown")
+        if country and country != "—":
+            current_countries.add(country)
+    
+    new_countries = current_countries - state["known_countries"]
+    
+    if new_countries and state["known_countries"]:
+        state["known_countries"].update(new_countries)
+        return {
+            "type": ActionableAlarmType.GEO_ANOMALY,
+            "severity": AlarmSeverity.WARNING,
+            "count": len(new_countries),
+            "countries": list(new_countries),
+            "message": f"Attacks from new country/region: {', '.join(new_countries)} (not seen in {STATEfulness_lookback_days} days)",
+            "requires_action": True,
+        }
+    
+    if not state["known_countries"] and current_countries:
+        state["known_countries"] = current_countries
+    
+    return None
+
+def _check_rate_limit_warnings():
+    if state["rate_limit_warnings"]:
+        warnings = state["rate_limit_warnings"][-10:]
+        return {
+            "type": ActionableAlarmType.RATE_LIMIT_WARNING,
+            "severity": AlarmSeverity.WARNING,
+            "count": len(warnings),
+            "warnings": warnings,
+            "message": f"Application rate limits triggered {len(warnings)} times - possible DoS attack",
+            "requires_action": True,
+        }
+    return None
+
+def _check_whitelist_expiry():
+    expiring = []
+    now = datetime.now(timezone.utc)
+    expiry_threshold = now + timedelta(days=WHITELIST_EXPIRY_DAYS)
+    
+    for ip, expiry_info in state.get("whitelist_expiry", {}).items():
+        if isinstance(expiry_info, dict):
+            expiry_date = expiry_info.get("expires")
+            if expiry_date:
+                try:
+                    if isinstance(expiry_date, str):
+                        expiry_dt = datetime.fromisoformat(expiry_date.replace("Z", "+00:00"))
+                    else:
+                        expiry_dt = expiry_date
+                    
+                    if expiry_dt <= expiry_threshold:
+                        expiring.append({
+                            "ip": ip,
+                            "expires": expiry_info.get("expires"),
+                            "reason": expiry_info.get("reason", "manual"),
+                        })
+                except:
+                    pass
+    
+    if expiring:
+        return {
+            "type": ActionableAlarmType.WHITELIST_EXPIRY,
+            "severity": AlarmSeverity.WARNING,
+            "count": len(expiring),
+            "entries": expiring,
+            "message": f"{len(expiring)} whitelist(s) expiring within {WHITELIST_EXPIRY_DAYS} days - renew to maintain protection",
+            "requires_action": True,
+        }
+    return None
+
+def _check_all_actionable_alarms():
+    alarms = []
+    
+    new_attack = _check_new_attack_sources(state["decisions"])
+    if new_attack:
+        alarms.append(new_attack)
+    
+    manual_review = _check_manual_review_alerts(state["alerts"])
+    if manual_review:
+        alarms.append(manual_review)
+    
+    failed_login = _check_failed_login_pattern()
+    if failed_login:
+        alarms.append(failed_login)
+    
+    api_error = _check_api_connection_errors()
+    if api_error:
+        alarms.append(api_error)
+    
+    geo_anomaly = _check_geo_anomalies(state["decisions"])
+    if geo_anomaly:
+        alarms.append(geo_anomaly)
+    
+    rate_limit = _check_rate_limit_warnings()
+    if rate_limit:
+        alarms.append(rate_limit)
+    
+    whitelist_expiry = _check_whitelist_expiry()
+    if whitelist_expiry:
+        alarms.append(whitelist_expiry)
+    
+    return alarms
+
+# Track failed login attempts
+def track_failed_login(ip):
+    now = time.time()
+    if ip not in state["failed_logins"]:
+        state["failed_logins"][ip] = []
+    state["failed_logins"][ip].append(now)
+    
+    cutoff = now - (FAILED_LOGIN_WINDOW * 2)
+    state["failed_logins"][ip] = [ts for ts in state["failed_logins"][ip] if ts > cutoff]
+
+def track_api_error(error_type, message):
+    now = time.time()
+    state["api_errors"].append({
+        "timestamp": now,
+        "type": error_type,
+        "message": message,
+    })
+    
+    cutoff = now - 3600
+    state["api_errors"] = [e for e in state["api_errors"] if e.get("timestamp", 0) > cutoff]
+
+def track_rate_limit_warning(ip, path):
+    now = time.time()
+    state["rate_limit_warnings"].append({
+        "timestamp": now,
+        "ip": ip,
+        "path": path,
+    })
+    
+    cutoff = now - 3600
+    state["rate_limit_warnings"] = [w for w in state["rate_limit_warnings"] if w.get("timestamp", 0) > cutoff]
+
+def add_whitelist_entry(ip, expires=None, reason="manual"):
+    state.setdefault("whitelist_expiry", {})[ip] = {
+        "expires": expires,
+        "reason": reason,
+        "added": datetime.now(timezone.utc).isoformat(),
+    }
+
+def remove_whitelist_entry(ip):
+    state.get("whitelist_expiry", {}).pop(ip, None)
 
 # ---------------------------------------------------------------------------
 # Notification logic
@@ -679,8 +942,10 @@ def fetch_decisions():
                 })
             return transformed
         log.warning("GET /v1/decisions -> %s", r.status_code)
+        track_api_error("decisions_http", f"HTTP {r.status_code}")
     except Exception as e:
         log.error("fetch_decisions: %s", e)
+        track_api_error("decisions_exception", str(e))
     return None
 
 def _format_duration(until_str):
@@ -736,8 +1001,10 @@ def fetch_alerts(since_minutes=120):
         if r.status_code == 200:
             return r.json() or []
         log.warning("GET /v1/alerts -> %s", r.status_code)
+        track_api_error("alerts_http", f"HTTP {r.status_code}")
     except Exception as e:
         log.error("fetch_alerts: %s", e)
+        track_api_error("alerts_exception", str(e))
     return None
 
 def fetch_metrics():
@@ -1255,6 +1522,80 @@ def api_alerts():
     if q:
         data = [a for a in data if q in json.dumps(a).lower()]
     return jsonify(data)
+
+@app.route("/api/alarms")
+@rate_limit
+@auth_required
+@audit_logged("api_alarms")
+def api_alarms():
+    severity_filter = request.args.get("severity", "").lower()
+    alarm_type_filter = request.args.get("type", "").lower()
+    
+    alarms = _check_all_actionable_alarms()
+    
+    if severity_filter:
+        alarms = [a for a in alarms if a.get("severity", "").value == severity_filter]
+    if alarm_type_filter:
+        alarms = [a for a in alarms if a.get("type", "") == alarm_type_filter]
+    
+    return jsonify({
+        "alarms": alarms,
+        "total": len(alarms),
+        "critical_count": len([a for a in alarms if a.get("severity", "").value == "critical"]),
+        "warning_count": len([a for a in alarms if a.get("severity", "").value == "warning"]),
+        "info_count": len([a for a in alarms if a.get("severity", "").value == "info"]),
+    })
+
+@app.route("/api/alarms/<alarm_type>/dismiss", methods=["POST"])
+@rate_limit
+@auth_required
+@audit_logged("api_alarms_dismiss")
+def api_alarms_dismiss(alarm_type):
+    if alarm_type == ActionableAlarmType.RATE_LIMIT_WARNING:
+        state["rate_limit_warnings"] = []
+    return jsonify({"ok": True})
+
+@app.route("/api/alarms/failed-logins", methods=["POST"])
+@rate_limit
+@auth_required
+@audit_logged("api_failed_login_track")
+def api_track_failed_login():
+    data = request.get_json(force=True, silent=True) or {}
+    ip = data.get("ip", request.remote_addr)
+    track_failed_login(ip)
+    return jsonify({"ok": True})
+
+@app.route("/api/whitelist", methods=["GET"])
+@rate_limit
+@auth_required
+@audit_logged("api_whitelist_get")
+def api_whitelist_get():
+    whitelist = state.get("whitelist_expiry", {})
+    return jsonify(whitelist)
+
+@app.route("/api/whitelist", methods=["POST"])
+@rate_limit
+@auth_required
+@audit_logged("api_whitelist_add")
+def api_whitelist_add():
+    data = request.get_json(force=True, silent=True) or {}
+    ip = data.get("ip")
+    expires = data.get("expires")
+    reason = data.get("reason", "manual")
+    
+    if not ip:
+        return jsonify({"error": "IP required"}), 400
+    
+    add_whitelist_entry(ip, expires, reason)
+    return jsonify({"ok": True})
+
+@app.route("/api/whitelist/<path:ip>", methods=["DELETE"])
+@rate_limit
+@auth_required
+@audit_logged("api_whitelist_remove")
+def api_whitelist_remove(ip):
+    remove_whitelist_entry(ip)
+    return jsonify({"ok": True})
 
 @app.route("/api/events")
 @rate_limit

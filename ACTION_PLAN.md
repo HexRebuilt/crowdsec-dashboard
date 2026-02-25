@@ -58,7 +58,7 @@ The CrowdSec Dashboard is a Flask-based web application with vanilla JavaScript 
 
 ### Phase 1: Security & Stability (High Priority)
 1. ✅ Add rate limiting middleware
-2. Implement session timeout configuration
+2. ✅ Implement session timeout configuration
 3. ✅ Add audit logging system
 4. ✅ Add IP whitelist functionality
 5. Add CSRF protection
@@ -96,6 +96,53 @@ The CrowdSec Dashboard is a Flask-based web application with vanilla JavaScript 
 4. Add Slack/Discord bot integration
 5. Add webhook support
 6. Add multi-tenant support
+
+### Phase 6: Alerts Enhancement (Medium Priority)
+1. ✅ Set recommended default thresholds (alert: 10, ban: 50)
+2. Add severity indicators (Critical/Warning/Info)
+3. Add filtering by scenario type and IP range
+4. Add time range selector (1h, 6h, 24h, 7d)
+5. Add pagination for large alert sets
+6. Add "Mark as reviewed" functionality
+7. Add smart threshold recommendations
+8. Add "Under Attack" indicator
+9. Add alert correlation and timeline view
+10. Add one-click ban from alert view
+11. Add false positive whitelist
+12. Add historical alert analysis
+
+### Phase 8: Actionable Alarms (High Priority) - Requires User Action
+**Principle**: Only show alarms that require human decision. Exclude passive/automated items.
+
+1. **New Attack Sources** - NEW high-risk IPs never seen before (never seen in last 30 days)
+2. **Manual Review Needed** - Alerts flagged for human decision (false positive candidates)
+3. **Whitelist Expiry** - Whitelists expiring within 7 days (renew or lose protection)
+4. **Failed Logins Pattern** - 5+ failed auth attempts from same IP in 10 minutes
+5. **API Connection Errors** - Failed connections to CrowdSec LAPI (2+ failures)
+6. **Geo Anomalies** - Attacks from countries not seen in last 30 days
+7. **Rate Limit Warnings** - When app rate limits trigger (potential DoS)
+
+### Phase 7: Testing & Quality Assurance (High Priority)
+1. Add unit tests for rate limiting
+2. Add unit tests for session management
+3. Add unit tests for IP whitelist
+4. Add unit tests for audit logging
+5. Add unit tests for configuration
+6. Add integration tests for API endpoints
+7. Add integration tests for authentication flow
+8. Add integration tests for alert processing
+9. Add integration tests for decision processing
+10. Add test execution before docker build
+
+## ⚠️ CRITICAL REMINDER: Test Before Build & Deploy
+Before any docker build or run operation, ALWAYS:
+1. Run the test suite first: `pytest` or `python -m pytest`
+2. If tests fail: Address the failed test results before proceeding
+3. Only after tests pass: Build the docker container
+4. Only after successful build: Run the container
+5. Only after successful run: Commit and push to repository
+
+**Never skip tests to speed up deployment. Test failures indicate bugs that will cause issues in production.**
 
 ## Implementation Strategy
 

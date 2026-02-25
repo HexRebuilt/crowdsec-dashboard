@@ -869,6 +869,10 @@ function setupTabs() {
       document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
       tab.classList.add('active');
       document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
+      
+      if (tab.dataset.tab === 'alarms') {
+        loadAlarms();
+      }
     });
   });
 }
@@ -907,9 +911,133 @@ async function initApp() {
   setInterval(() => {
     loadDecisions();
     loadAlerts();
+    loadAlarms();
   }, 30000);
   
   setInterval(loadStatistics, 86400000);
+}
+
+async function loadAlarms() {
+  try {
+    const severity = document.getElementById('alarm-severity-filter')?.value || '';
+    const url = severity ? `/api/alarms?severity=${severity}` : '/api/alarms';
+    const data = await api(url);
+    
+    renderAlarms(data);
+    updateAlarmsBadge(data);
+  } catch (e) {
+    console.error('Failed to load alarms:', e);
+  }
+}
+
+function renderAlarms(data) {
+  const container = document.getElementById('alarms-container');
+  const emptyState = document.getElementById('alarms-empty');
+  
+  if (!data.alarms || data.alarms.length === 0) {
+    if (emptyState) emptyState.style.display = 'flex';
+    document.getElementById('alarms-count').textContent = '';
+    return;
+  }
+  
+  if (emptyState) emptyState.style.display = 'none';
+  
+  let html = '';
+  for (const alarm of data.alarms) {
+    const severityClass = alarm.severity?.value || alarm.severity || 'info';
+    const severityLabel = severityClass.toUpperCase();
+    const icon = getAlarmIcon(alarm.type);
+    
+    html += `
+      <div class="alarm-card alarm-${severityClass}">
+        <div class="alarm-header">
+          <div class="alarm-icon">${icon}</div>
+          <div class="alarm-title">
+            <span class="alarm-type">${formatAlarmType(alarm.type)}</span>
+            <span class="alarm-badge badge-${severityClass}">${severityLabel}</span>
+          </div>
+          <div class="alarm-count">${alarm.count}</div>
+        </div>
+        <div class="alarm-message">${alarm.message}</div>
+        <div class="alarm-details">${renderAlarmDetails(alarm)}</div>
+      </div>
+    `;
+  }
+  
+  container.innerHTML = html;
+  document.getElementById('alarms-count').textContent = `(${data.total})`;
+}
+
+function getAlarmIcon(type) {
+  const icons = {
+    'new_attack_source': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+    'manual_review': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+    'whitelist_expiry': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
+    'failed_login_pattern': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>',
+    'api_connection_error': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 15l-6-6-6 6"/></svg>',
+    'geo_anomaly': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>',
+    'rate_limit_warning': '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>',
+  };
+  return icons[type] || icons['new_attack_source'];
+}
+
+function formatAlarmType(type) {
+  const names = {
+    'new_attack_source': 'New Attack Sources',
+    'manual_review': 'Manual Review Needed',
+    'whitelist_expiry': 'Whitelist Expiring',
+    'failed_login_pattern': 'Failed Login Pattern',
+    'api_connection_error': 'API Connection Error',
+    'geo_anomaly': 'Geo Anomaly',
+    'rate_limit_warning': 'Rate Limit Warning',
+  };
+  return names[type] || type;
+}
+
+function renderAlarmDetails(alarm) {
+  if (!alarm.ips && !alarm.alerts && !alarm.errors && !alarm.countries && !alarm.warnings && !alarm.entries) {
+    return '';
+  }
+  
+  let details = '<div class="alarm-data">';
+  
+  if (alarm.ips && alarm.ips.length > 0) {
+    details += '<div class="alarm-data-row"><strong>IPs:</strong> ' + alarm.ips.slice(0, 5).join(', ') + (alarm.ips.length > 5 ? '...' : '') + '</div>';
+  }
+  
+  if (alarm.countries && alarm.countries.length > 0) {
+    details += '<div class="alarm-data-row"><strong>Countries:</strong> ' + alarm.countries.join(', ') + '</div>';
+  }
+  
+  if (alarm.entries && alarm.entries.length > 0) {
+    for (const entry of alarm.entries.slice(0, 3)) {
+      details += `<div class="alarm-data-row"><strong>${entry.ip}</strong> - Expires: ${entry.expires || 'unknown'}</div>`;
+    }
+  }
+  
+  details += '</div>';
+  return details;
+}
+
+function updateAlarmsBadge(data) {
+  const badge = document.getElementById('alarms-badge');
+  if (!badge) return;
+  
+  if (data.critical_count > 0) {
+    badge.textContent = data.critical_count;
+    badge.style.display = 'inline';
+    badge.className = 'badge badge-critical';
+  } else if (data.warning_count > 0) {
+    badge.textContent = data.warning_count;
+    badge.style.display = 'inline';
+    badge.className = 'badge badge-warning';
+  } else if (data.info_count > 0) {
+    badge.textContent = data.info_count;
+    badge.style.display = 'inline';
+    badge.className = 'badge badge-info';
+  } else {
+    badge.style.display = 'none';
+  }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -930,6 +1058,9 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('sso-btn').addEventListener('click', handleSSOLogin);
   
   document.getElementById('refresh-chart').addEventListener('click', loadStatistics);
+  
+  document.getElementById('refresh-alarms')?.addEventListener('click', loadAlarms);
+  document.getElementById('alarm-severity-filter')?.addEventListener('change', loadAlarms);
   
   checkAuth();
 });
