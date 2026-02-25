@@ -6,7 +6,6 @@ services:
     restart: unless-stopped
     networks:
       - traefik_cloudflared_default
-      - apprise_default
     env_file:
       - .env
     environment:
@@ -18,9 +17,6 @@ services:
       BAN_THRESHOLD: "0"
       NOTIFY_COOLDOWN: "3600"
       DIGEST_INTERVAL: "0"
-      APPRISE_API_URL: "http://apprise:8000"
-      APPRISE_API_KEY: ""
-      APPRISE_CONFIG_KEY: "crowdsec-dashboard"
       UNSECURE: "true"
       LOG_LEVEL: "INFO"
     ports:
@@ -34,6 +30,4 @@ services:
 
 networks:
   traefik_cloudflared_default:
-    external: true
-  apprise_default:
     external: true
