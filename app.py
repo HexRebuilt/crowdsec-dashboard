@@ -198,23 +198,105 @@ cfg = {
 }
 
 # ---------------------------------------------------------------------------
+# Alarm data structures
+# ---------------------------------------------------------------------------
+from enum import Enum
+
+class AlarmSeverity(Enum):
+    CRITICAL = "critical"
+    WARNING = "warning"
+    INFO = "info"
+
+class AlarmStatus(Enum):
+    ACTIVE = "active"
+    ACKNOWLEDGED = "acknowledged"
+    RESOLVED = "resolved"
+
+class Alarm:
+    def __init__(self, alert_id, severity, ip, scenario, events_count, message, source):
+        self.id = str(alert_id)
+        self.severity = severity
+        self.status = AlarmStatus.ACTIVE
+        self.ip = ip
+        self.scenario = scenario
+        self.events_count = events_count
+        self.message = message
+        self.source = source
+        self.created_at = datetime.now(timezone.utc).isoformat()
+        self.updated_at = self.created_at
+        self.acknowledged_at = None
+        self.acknowledged_by = None
+        self.correlation_id = self._generate_correlation_id()
+
+    def _generate_correlation_id(self):
+        return hashlib.sha256(f"{self.ip}_{self.scenario}".encode()).hexdigest()
+
+    def acknowledge(self, username):
+        self.status = AlarmStatus.ACKNOWLEDGED
+        self.acknowledged_at = datetime.now(timezone.utc).isoformat()
+        self.acknowledged_by = username
+        self.updated_at = self.acknowledged_at
+
+    def resolve(self):
+        self.status = AlarmStatus.RESOLVED
+        self.updated_at = datetime.now(timezone.utc).isoformat()
+
+# ---------------------------------------------------------------------------
 # In-memory state
 # ---------------------------------------------------------------------------
 state = {
     "decisions":           [],
     "alerts":              [],
+    "alarms":              [],
     "metrics":             {},
     "last_poll":           None,
     "poll_errors":         0,
     "known_decision_ids":  set(),
     "known_alert_ids":     set(),
+    "known_alarm_ids":     set(),
     "events":              deque(maxlen=500),
     "cooldowns":           {},
     "suppressed_count":    0,
     "sent_count":          0,
     "digest_buffer":       [],
     "last_digest_sent":    time.time(),
+    "alarm_correlations":  {},
 }
+
+# ---------------------------------------------------------------------------
+# Alarm correlation and severity logic
+# ---------------------------------------------------------------------------
+def _determine_alarm_severity(alert):
+    events_count = alert.get("events_count", 0)
+    scenario = alert.get("scenario", "")
+    
+    if "fail2ban" in scenario.lower() or "ssh" in scenario.lower():
+        if events_count >= 50:
+            return AlarmSeverity.CRITICAL
+        elif events_count >= 20:
+            return AlarmSeverity.WARNING
+        else:
+            return AlarmSeverity.INFO
+    elif "web" in scenario.lower() or "http" in scenario.lower():
+        if events_count >= 100:
+            return AlarmSeverity.CRITICAL
+        elif events_count >= 50:
+            return AlarmSeverity.WARNING
+        else:
+            return AlarmSeverity.INFO
+    elif "portscan" in scenario.lower() or "recon" in scenario.lower():
+        if events_count >= 10:
+            return AlarmSeverity.CRITICAL
+        elif events_count >= 5:
+            return AlarmSeverity.WARNING
+        else:
+            return AlarmSeverity.INFO
+    elif events_count >= 100:
+        return AlarmSeverity.CRITICAL
+    elif events_count >= 50:
+        return AlarmSeverity.WARNING
+    else:
+        return AlarmSeverity.INFO
 
 # ---------------------------------------------------------------------------
 # Notification logic
