@@ -1,8 +1,8 @@
 # CrowdSec Dashboard - Software Bill of Materials (SBOM)
 
 **Project:** CrowdSec Dashboard  
-**Version:** 1.0.0  
-**Generated:** 2026-02-23
+**Version:** 1.0.1  
+**Generated:** 2026-02-25
 
 ## Backend Components
 
