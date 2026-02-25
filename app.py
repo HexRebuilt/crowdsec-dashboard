@@ -149,6 +149,51 @@ AUTH_ENABLED = AUTH_CREDENTIALS_ENABLED or AUTH_AUTH0_ENABLED
 app = Flask(__name__, static_folder="static")
 CORS(app, supports_credentials=True)
 
+# Session configuration
+SESSION_TIMEOUT = int(os.getenv("SESSION_TIMEOUT", "1800"))
+SESSION_MAX_AGE = int(os.getenv("SESSION_MAX_AGE", "86400"))
+
+# Session storage
+sessions = {}
+
+def create_session(username):
+    token = secrets.token_urlsafe(32)
+    sessions[token] = {
+        "username": username,
+        "created": time.time(),
+        "expires": time.time() + SESSION_MAX_AGE,
+        "last_activity": time.time()
+    }
+    return token
+
+def validate_session(token):
+    if not token:
+        return None
+    session = sessions.get(token)
+    if not session:
+        return None
+    if time.time() > session["expires"]:
+        sessions.pop(token, None)
+        return None
+    if SESSION_TIMEOUT > 0:
+        last_activity = session.get("last_activity", session["created"])
+        if time.time() - last_activity > SESSION_TIMEOUT:
+            sessions.pop(token, None)
+            return None
+        session["last_activity"] = time.time()
+    return session["username"]
+
+def cleanup_sessions():
+    now = time.time()
+    expired = [t for t, s in sessions.items() if now > s["expires"] or (SESSION_TIMEOUT > 0 and now - s.get("last_activity", s["created"]) > SESSION_TIMEOUT)]
+    for t in expired:
+        sessions.pop(t, None)
+
+def session_cleanup_loop():
+    while True:
+        time.sleep(60)
+        cleanup_sessions()
+
 # Rate limiting middleware
 class RateLimiter:
     def __init__(self):
@@ -992,6 +1037,42 @@ def api_auth_check():
     username = validate_session(token)
     return jsonify({"authenticated": True, "username": username})
 
+@app.route("/api/auth/session", methods=["GET"])
+@rate_limit
+@auth_required
+def api_auth_session():
+    token = get_token_from_request()
+    session = sessions.get(token)
+    if not session:
+        return jsonify({"error": "No active session"}), 404
+    
+    now = time.time()
+    remaining = 0
+    if SESSION_TIMEOUT > 0:
+        last_activity = session.get("last_activity", session["created"])
+        remaining = max(0, SESSION_TIMEOUT - (now - last_activity))
+    
+    return jsonify({
+        "timeout": SESSION_TIMEOUT,
+        "max_age": SESSION_MAX_AGE,
+        "remaining_seconds": int(remaining),
+        "created": session.get("created"),
+        "last_activity": session.get("last_activity"),
+    })
+
+@app.route("/api/auth/session", methods=["POST"])
+@rate_limit
+@auth_required
+def api_auth_session_extend():
+    token = get_token_from_request()
+    session = sessions.get(token)
+    if not session:
+        return jsonify({"error": "No active session"}), 404
+    
+    session["last_activity"] = time.time()
+    session["expires"] = time.time() + SESSION_MAX_AGE
+    return jsonify({"ok": True, "message": "Session extended"})
+
 @app.route("/api/auth/password", methods=["POST"])
 @rate_limit
 @auth_required
@@ -1410,4 +1491,5 @@ if __name__ == "__main__":
     threading.Thread(target=digest_loop, daemon=True).start()
     threading.Thread(target=poll_loop, daemon=True).start()
     threading.Thread(target=_do_poll, daemon=True).start()
+    threading.Thread(target=session_cleanup_loop, daemon=True).start()
     app.run(host="0.0.0.0", port=5000, debug=False)
