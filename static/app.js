@@ -30,20 +30,26 @@ function getSystemTheme() {
 
 function getTheme() {
   const saved = localStorage.getItem('theme');
-  if (saved) return saved;
+  if (saved && saved !== 'auto') return saved;
   return getSystemTheme();
 }
 
 function setTheme(theme) {
+  if (theme === 'auto') {
+    localStorage.removeItem('theme');
+    theme = getSystemTheme();
+  } else {
+    localStorage.setItem('theme', theme);
+  }
   document.documentElement.setAttribute('data-theme', theme);
-  localStorage.setItem('theme', theme);
   updateThemeIcons(theme);
 }
 
 function initThemeListener() {
   const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
   mediaQuery.addEventListener('change', e => {
-    if (!localStorage.getItem('theme')) {
+    const saved = localStorage.getItem('theme');
+    if (!saved || saved === 'auto') {
       setTheme(e.matches ? 'dark' : 'light');
     }
   });

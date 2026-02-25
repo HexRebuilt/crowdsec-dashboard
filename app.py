@@ -371,6 +371,24 @@ def digest_loop():
 def cs_headers():
     return {"X-Api-Key": CROWDSEC_API_KEY, "Accept": "application/json"}
 
+def _parse_duration_to_seconds(duration_str):
+    if not duration_str:
+        return 0
+    try:
+        duration_str = str(duration_str).strip()
+        if duration_str.endswith('h'):
+            return int(duration_str[:-1]) * 3600
+        elif duration_str.endswith('m'):
+            return int(duration_str[:-1]) * 60
+        elif duration_str.endswith('s'):
+            return int(duration_str[:-1])
+        elif duration_str.endswith('d'):
+            return int(duration_str[:-1]) * 86400
+        else:
+            return int(duration_str)
+    except (ValueError, AttributeError):
+        return 0
+
 def fetch_decisions():
     try:
         r = requests.get(f"{CROWDSEC_URL}/v1/decisions", headers=cs_headers(), timeout=10)
@@ -385,8 +403,10 @@ def fetch_decisions():
                         until_dt = datetime.fromisoformat(until_str.replace("Z", "+00:00"))
                         duration_val = d.get("duration")
                         if duration_val:
-                            created_dt = until_dt - timedelta(seconds=int(duration_val))
-                            created_at = created_dt.isoformat()
+                            seconds = _parse_duration_to_seconds(duration_val)
+                            if seconds > 0:
+                                created_dt = until_dt - timedelta(seconds=seconds)
+                                created_at = created_dt.isoformat()
                     except:
                         pass
                 transformed.append({
