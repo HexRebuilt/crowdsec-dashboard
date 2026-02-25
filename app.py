@@ -376,16 +376,26 @@ def _parse_duration_to_seconds(duration_str):
         return 0
     try:
         duration_str = str(duration_str).strip()
-        if duration_str.endswith('h'):
-            return int(duration_str[:-1]) * 3600
-        elif duration_str.endswith('m'):
-            return int(duration_str[:-1]) * 60
-        elif duration_str.endswith('s'):
-            return int(duration_str[:-1])
-        elif duration_str.endswith('d'):
-            return int(duration_str[:-1]) * 86400
-        else:
-            return int(duration_str)
+        seconds = 0
+        temp = ""
+        for c in duration_str:
+            if c.isdigit():
+                temp += c
+            elif c == 'h' and temp:
+                seconds += int(temp) * 3600
+                temp = ""
+            elif c == 'm' and temp:
+                seconds += int(temp) * 60
+                temp = ""
+            elif c == 's' and temp:
+                seconds += int(temp)
+                temp = ""
+            elif c == 'd' and temp:
+                seconds += int(temp) * 86400
+                temp = ""
+        if temp:
+            seconds += int(temp)
+        return seconds
     except (ValueError, AttributeError):
         return 0
 
@@ -395,13 +405,22 @@ def fetch_decisions():
         if r.status_code == 200:
             decisions = r.json() or []
             transformed = []
+            now = datetime.now(timezone.utc)
             for d in decisions:
                 until_str = d.get("until")
                 created_at = d.get("created_at") or d.get("start_at")
+                duration_val = d.get("duration")
+                if not created_at and duration_val:
+                    try:
+                        seconds = _parse_duration_to_seconds(duration_val)
+                        if seconds > 0:
+                            created_dt = now - timedelta(seconds=seconds)
+                            created_at = created_dt.isoformat()
+                    except:
+                        pass
                 if not created_at and until_str:
                     try:
                         until_dt = datetime.fromisoformat(until_str.replace("Z", "+00:00"))
-                        duration_val = d.get("duration")
                         if duration_val:
                             seconds = _parse_duration_to_seconds(duration_val)
                             if seconds > 0:
@@ -415,7 +434,7 @@ def fetch_decisions():
                     "type": d.get("type", "ban"),
                     "scenario": d.get("scenario", "—"),
                     "origin": d.get("origin", "—"),
-                    "duration": _format_duration(until_str),
+                    "duration": _format_duration(until_str) if until_str else _format_duration_from_now(duration_val, now),
                     "until": until_str,
                     "value": d.get("value"),
                     "created_at": created_at,
@@ -435,6 +454,26 @@ def _format_duration(until_str):
         diff = until - now
         if diff.total_seconds() <= 0:
             return "expired"
+        hours = int(diff.total_seconds() // 3600)
+        minutes = int((diff.total_seconds() % 3600) // 60)
+        if hours > 24:
+            days = hours // 24
+            return f"{days}d {hours % 24}h"
+        elif hours > 0:
+            return f"{hours}h {minutes}m"
+        else:
+            return f"{minutes}m"
+    except Exception:
+        return "—"
+
+def _format_duration_from_now(duration_str, now):
+    if not duration_str:
+        return "—"
+    try:
+        seconds = _parse_duration_to_seconds(duration_str)
+        if seconds <= 0:
+            return "expired"
+        diff = timedelta(seconds=seconds)
         hours = int(diff.total_seconds() // 3600)
         minutes = int((diff.total_seconds() % 3600) // 60)
         if hours > 24:
