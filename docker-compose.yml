@@ -6,9 +6,6 @@ services:
     restart: unless-stopped
     networks:
       - traefik_cloudflared_default
-    dns:
-      - 1.1.1.1
-      - 8.8.8.8
     env_file:
       - .env
     environment:
