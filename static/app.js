@@ -401,13 +401,24 @@ function updateAuthMethodSelect() {
     return;
   }
   
+  card.style.display = 'block';
+  const content = document.getElementById('auth-method-content');
+  
   if (state.auth.method === 'auth0') {
-    card.style.display = 'none';
+    content.innerHTML = `
+      <div class="status-line">
+        <span class="status-label">Method</span>
+        <span class="status-value connected">External SSO (Auth0/Authentik)</span>
+      </div>
+      <div class="status-line">
+        <span class="status-label">Provider</span>
+        <span class="status-value">${state.auth.auth0Domain || 'External'}</span>
+      </div>
+      <p class="settings-note">SSO is configured via environment variables.</p>
+    `;
     return;
   }
   
-  card.style.display = 'block';
-  const content = document.getElementById('auth-method-content');
   content.innerHTML = `
     <div class="status-line">
       <span class="status-label">Current Method</span>

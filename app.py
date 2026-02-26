@@ -1662,6 +1662,7 @@ def api_apprise_status():
                 "api_reachable": r.status_code == 200,
                 "config_key": APPRISE_CONFIG_KEY,
                 "urls_count": len(_apprise_api_get_urls()),
+                "apprise_configured": True,
             })
         except Exception as e:
             return jsonify({
@@ -1669,6 +1670,7 @@ def api_apprise_status():
                 "api_url": APPRISE_API_URL,
                 "api_reachable": False,
                 "error": str(e),
+                "apprise_configured": False,
             })
     else:
         urls = _get_apprise_urls()
@@ -1676,6 +1678,7 @@ def api_apprise_status():
             "mode": "embedded",
             "urls_count": len(urls),
             "urls": urls[:3] if urls else [],
+            "apprise_configured": len(urls) > 0,
         })
 
 @app.route("/api/apprise/urls", methods=["GET"])
