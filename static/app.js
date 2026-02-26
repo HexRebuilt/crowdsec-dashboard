@@ -72,7 +72,10 @@ async function api(path, options = {}) {
     ...options
   });
   if (res.status === 401) {
-    showLoginPage();
+    console.warn('API 401:', path);
+    if (!options.allowAuthFailure) {
+      showLoginPage();
+    }
     throw new Error('Unauthorized');
   }
   if (!res.ok) {
@@ -186,6 +189,7 @@ async function handleSSOLogin() {
   const redirectUri = encodeURIComponent(appUrl + '/callback');
   const stateParam = btoa(Math.random().toString());
   sessionStorage.setItem('auth0_state', stateParam);
+  sessionStorage.setItem('auth0_app_url', appUrl);
   
   let authUrl;
   if (authorizeUrl) {
@@ -209,7 +213,7 @@ async function handleSSOLogin() {
 }
 
 async function handleAuth0Callback(code) {
-  const appUrl = state.auth.appUrl || window.location.origin;
+  const appUrl = sessionStorage.getItem('auth0_app_url') || state.auth.appUrl || window.location.origin;
   const redirectUri = appUrl + '/callback';
   
   if (code) {
@@ -223,6 +227,7 @@ async function handleAuth0Callback(code) {
     }
     
     sessionStorage.removeItem('auth0_state');
+    sessionStorage.removeItem('auth0_app_url');
     
     try {
       const res = await fetch('/api/auth/callback', {
@@ -402,7 +407,7 @@ function updateAuthMethodSelect() {
 
 async function loadStatus() {
   try {
-    state.status = await api('/api/status');
+    state.status = await api('/api/status', { allowAuthFailure: true });
     updateStatusUI();
   } catch (e) {
     console.error('Failed to load status:', e);
@@ -411,7 +416,7 @@ async function loadStatus() {
 
 async function loadConfig() {
   try {
-    state.config = await api('/api/config');
+    state.config = await api('/api/config', { allowAuthFailure: true });
     updateConfigUI();
   } catch (e) {
     console.error('Failed to load config:', e);
@@ -421,7 +426,7 @@ async function loadConfig() {
 async function loadDecisions() {
   try {
     const q = state.decisionsSearch;
-    state.decisions = await api(`/api/decisions${q ? '?q=' + encodeURIComponent(q) : ''}`);
+    state.decisions = await api(`/api/decisions${q ? '?q=' + encodeURIComponent(q) : ''}`, { allowAuthFailure: true });
     updateDecisionsUI();
   } catch (e) {
     console.error('Failed to load decisions:', e);
@@ -430,7 +435,7 @@ async function loadDecisions() {
 
 async function loadAppriseStatus() {
   try {
-    state.appriseStatus = await api('/api/apprise/status');
+    state.appriseStatus = await api('/api/apprise/status', { allowAuthFailure: true });
     updateAppriseUI();
   } catch (e) {
     console.error('Failed to load apprise status:', e);
@@ -439,7 +444,7 @@ async function loadAppriseStatus() {
 
 async function loadAppriseUrls() {
   try {
-    const data = await api('/api/apprise/urls');
+    const data = await api('/api/apprise/urls', { allowAuthFailure: true });
     document.getElementById('apprise-urls').value = data.urls || '';
   } catch (e) {
     console.error('Failed to load apprise urls:', e);
@@ -448,7 +453,7 @@ async function loadAppriseUrls() {
 
 async function loadAuthProviderSettings() {
   try {
-    const data = await api('/api/auth/config');
+    const data = await api('/api/auth/config', { allowAuthFailure: true });
     updateAuthSettingsUI(data);
   } catch (e) {
     console.error('Failed to load auth config:', e);
@@ -772,7 +777,7 @@ async function deleteDecision(ip) {
 
 async function loadStatistics() {
   try {
-    const stats = await api('/api/statistics');
+    const stats = await api('/api/statistics', { allowAuthFailure: true });
     updateCharts(stats);
     document.getElementById('stat-bans').textContent = stats.decisions.total;
     document.getElementById('stat-sent').textContent = state.status.sent_count || 0;
@@ -882,7 +887,7 @@ async function loadAlarms() {
   try {
     const severity = document.getElementById('alarm-severity-filter')?.value || '';
     const url = severity ? `/api/alarms?severity=${severity}` : '/api/alarms';
-    const data = await api(url);
+    const data = await api(url, { allowAuthFailure: true });
     
     renderAlarms(data);
     updateAlarmsBadge(data);

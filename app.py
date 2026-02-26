@@ -42,6 +42,8 @@ AUDIT_LOG_FILE = os.getenv("AUDIT_LOG_FILE", "/var/log/crowdsec-dashboard/audit.
 # Boot-time config (from env)
 CROWDSEC_URL       = os.getenv("CROWDSEC_URL", "http://crowdsec:8080")
 CROWDSEC_API_KEY   = os.getenv("CROWDSEC_API_KEY", "")
+CROWDSEC_LOGIN     = os.getenv("CROWDSEC_LOGIN", "")
+CROWDSEC_PASSWORD  = os.getenv("CROWDSEC_PASSWORD", "")
 APPRISE_URLS       = os.getenv("APPRISE_URLS", "")
 APPRISE_CONFIG_URL = os.getenv("APPRISE_CONFIG_URL", "")
 POLL_INTERVAL      = int(os.getenv("POLL_INTERVAL", "30"))
@@ -869,8 +871,49 @@ def digest_loop():
 # ---------------------------------------------------------------------------
 # CrowdSec LAPI helpers
 # ---------------------------------------------------------------------------
+_crowdsec_token = None
+_crowdsec_token_expires = 0
+
 def cs_headers():
     return {"X-Api-Key": CROWDSEC_API_KEY, "Accept": "application/json"}
+
+def cs_auth():
+    global _crowdsec_token, _crowdsec_token_expires
+    if CROWDSEC_LOGIN and CROWDSEC_PASSWORD:
+        import time
+        if not _crowdsec_token or time.time() >= _crowdsec_token_expires - 60:
+            try:
+                login_data = {
+                    "machine_id": CROWDSEC_LOGIN,
+                    "password": CROWDSEC_PASSWORD
+                }
+                r = requests.post(
+                    f"{CROWDSEC_URL}/v1/watchers/login",
+                    json=login_data,
+                    headers={"Accept": "application/json"},
+                    timeout=10
+                )
+                if r.status_code == 200:
+                    data = r.json()
+                    _crowdsec_token = data.get("token")
+                    expire_str = data.get("expire", "")
+                    if expire_str:
+                        from datetime import datetime, timezone
+                        try:
+                            exp_dt = datetime.fromisoformat(expire_str.replace("Z", "+00:00"))
+                            _crowdsec_token_expires = exp_dt.timestamp()
+                        except:
+                            _crowdsec_token_expires = time.time() + 3600
+                    else:
+                        _crowdsec_token_expires = time.time() + 3600
+                else:
+                    log.warning("CrowdSec login failed: %s", r.status_code)
+            except Exception as e:
+                log.error("CrowdSec login error: %s", e)
+        
+        if _crowdsec_token:
+            return {"Authorization": f"Bearer {_crowdsec_token}"}
+    return None
 
 def _parse_duration_to_seconds(duration_str):
     if not duration_str:
@@ -991,13 +1034,12 @@ def _format_duration_from_now(duration_str, now):
 
 def fetch_alerts(since_minutes=120):
     try:
-        since = (datetime.now(timezone.utc) - timedelta(minutes=since_minutes)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        r = requests.get(
-            f"{CROWDSEC_URL}/v1/alerts",
-            headers=cs_headers(),
-            params={"since": since},
-            timeout=10,
-        )
+        since = f"{since_minutes}m"
+        headers = cs_headers()
+        auth = cs_auth()
+        if auth:
+            headers.update(auth)
+        r = requests.get(f"{CROWDSEC_URL}/v1/alerts", headers=headers, params={"since": since}, timeout=10)
         if r.status_code == 200:
             return r.json() or []
         log.warning("GET /v1/alerts -> %s", r.status_code)
