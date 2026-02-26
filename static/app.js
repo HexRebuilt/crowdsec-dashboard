@@ -307,6 +307,16 @@ async function handleLogout() {
   } catch (e) {}
   state.auth.authenticated = false;
   state.auth.username = null;
+  
+  // Get fresh auth status to determine login method
+  try {
+    const status = await fetch('/api/auth/status', { credentials: 'include' }).then(r => r.json());
+    state.auth.method = status.method;
+    state.auth.auth0Domain = status.auth0_domain;
+    state.auth.auth0ClientId = status.auth0_client_id;
+    state.auth.auth0AuthorizeUrl = status.auth0_authorize_url;
+  } catch (e) {}
+  
   showLoginPage();
 }
 
