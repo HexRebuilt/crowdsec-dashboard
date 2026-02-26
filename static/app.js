@@ -21,6 +21,68 @@ const state = {
   }
 };
 
+const SCENARIO_DESCRIPTIONS = {
+  "http-crawl": "Automated bot crawling your website to find vulnerabilities",
+  "http-sql-injection": "SQL injection attack attempt - attacker tries to inject malicious SQL code",
+  "http-xss": "Cross-site scripting (XSS) attack - attempts to inject malicious scripts",
+  "http-csrf": "Cross-site request forgery attempt",
+  "http-probing": "Probing attack - scanning for open ports or vulnerabilities",
+  "http-backdoor": "Backdoor access attempt - trying to establish unauthorized access",
+  "http-bruteforce": "Brute force attack - repeated login attempts to guess passwords",
+  "ssh-bruteforce": "SSH brute force attack - repeated attempts to guess SSH credentials",
+  "ssh-probing": "SSH probing - scanning for SSH vulnerabilities",
+  "ftp-bruteforce": "FTP brute force attack - guessing FTP credentials",
+  "smtp-bruteforce": "SMTP brute force - attempting to send spam or hack email accounts",
+  "pop3-bruteforce": "POP3 brute force attack on email retrieval",
+  "imap-bruteforce": "IMAP brute force attack on email access",
+  "http-irc-bounce": "Attempt to use HTTP proxy as IRC bounce",
+  "http-misc": "Miscellaneous HTTP attack",
+  "tls-invalid-client_hello": "Invalid TLS client hello - potential scanning or attack",
+  "http-wordpress": "WordPress specific attack or vulnerability probe",
+  "http-joomla": "Joomla CMS specific attack",
+  "http-drupal": "Drupal CMS specific attack",
+  "http-magento": "Magento e-commerce platform attack",
+  "httpnginx": "Nginx-specific attack attempt",
+  "httpapache": "Apache web server attack attempt",
+  "http-cowboy": "Cowboy web framework attack",
+  "http-openresty": "OpenResty web platform attack",
+  "ssl-cert": "SSL certificate issue or mismatch",
+  "ssl-known-good": "Known safe SSL certificate",
+  "tls-scan": "TLS/SSL vulnerability scanning",
+  "iprep": "IP reputation based blocking - IP has bad reputation",
+  "crowdsecurity/http-crawl": "CrowdSec HTTP crawling detection",
+  "crowdsecurity/http-sensitive-files": "Access to sensitive files detected",
+  "crowdsecurity/path-traversal": "Path traversal attack attempt",
+  "crowdsecurity/404-recon": "Reconnaissance via repeated 404 errors",
+  "crowdsecurity/admin-panel": "Admin panel access attempt",
+  "crowdsecurity/database-probe": "Database vulnerability probing",
+  "crowdsecurity/login-s的法": "Brute force login attempt",
+};
+
+function showTooltip(e, text) {
+  let tooltip = document.getElementById('scenario-tooltip');
+  if (!tooltip) {
+    tooltip = document.createElement('div');
+    tooltip.id = 'scenario-tooltip';
+    tooltip.style.cssText = 'position:fixed;background:#333;color:#fff;padding:8px 12px;border-radius:4px;font-size:12px;z-index:9999;max-width:300px;pointer-events:none;display:none;';
+    document.body.appendChild(tooltip);
+  }
+  tooltip.textContent = text;
+  tooltip.style.display = 'block';
+  tooltip.style.left = (e.pageX + 10) + 'px';
+  tooltip.style.top = (e.pageY + 10) + 'px';
+}
+
+function hideTooltip() {
+  const tooltip = document.getElementById('scenario-tooltip');
+  if (tooltip) tooltip.style.display = 'none';
+}
+
+function getScenarioDescription(scenario) {
+  if (!scenario) return 'Unknown scenario';
+  return SCENARIO_DESCRIPTIONS[scenario] || `Security event: ${scenario}`;
+}
+
 function getSystemTheme() {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
@@ -651,7 +713,7 @@ function updateDecisionsUI() {
   tbody.innerHTML = page.map(d => `
     <tr>
       <td class="ip-cell">${d.ip || '—'}</td>
-      <td>${d.scenario || '—'}</td>
+      <td onmouseover="showTooltip(event, getScenarioDescription('${d.scenario || ''}'))" onmouseout="hideTooltip()">${d.scenario || '—'}</td>
       <td>${timeAgo(d.created_at)}</td>
       <td><button class="btn btn-danger btn-sm" onclick="deleteDecision('${d.ip}')">Delete</button></td>
     </tr>
@@ -853,7 +915,7 @@ function updateCharts(stats) {
   });
   
   legend.innerHTML = labels.map((label, i) => `
-    <div class="legend-item">
+    <div class="legend-item" onmouseover="showTooltip(event, getScenarioDescription('${label}'))" onmouseout="hideTooltip()">
       <span class="legend-color" style="background:${colors[i % colors.length]}"></span>
       <span class="legend-label">${label}</span>
       <span class="legend-value">${values[i]}</span>
