@@ -105,6 +105,7 @@ function timeAgo(isoString) {
 }
 
 function showLoginPage() {
+  console.log('showLoginPage called, auth method:', state.auth.method);
   document.getElementById('login-page').classList.remove('hidden');
   document.getElementById('app').classList.add('hidden');
   document.getElementById('login-error').classList.add('hidden');
@@ -121,6 +122,7 @@ function showLoginPage() {
 }
 
 function showApp() {
+  console.log('showApp called');
   document.getElementById('login-page').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
 }
@@ -243,14 +245,18 @@ async function handleAuth0Callback(code) {
         throw new Error(data.error || 'Login failed');
       }
       
+      console.log('Login successful, username:', data.username);
       state.auth.authenticated = true;
       state.auth.username = data.username;
       window.history.replaceState({}, document.title, window.location.pathname);
       showApp();
       document.getElementById('user-badge').textContent = data.username;
+      console.log('Calling initApp...');
       await initApp();
+      console.log('initApp complete');
       return true;
     } catch (e) {
+      console.error('Login failed:', e);
       showToast(e.message, 'error');
       return false;
     }
@@ -865,6 +871,10 @@ function setupSearch() {
     state.decisionsPage = 1;
     loadDecisions();
   });
+}
+
+function setupAutoRefresh() {
+  // Auto-refresh is handled by setInterval in initApp
 }
 
 async function initApp() {
