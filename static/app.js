@@ -753,7 +753,7 @@ async function saveConfig() {
   };
   
   try {
-    await api('/api/config', { method: 'POST', body: JSON.stringify(config) });
+    await api('/api/config', { method: 'PATCH', body: JSON.stringify(config) });
     showToast('Settings saved');
   } catch (e) {
     showToast('Failed to save settings', 'error');

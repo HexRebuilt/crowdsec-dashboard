@@ -1546,8 +1546,12 @@ def api_decisions():
 def api_alarms():
     severity_filter = request.args.get("severity", "").lower()
     alarm_type_filter = request.args.get("type", "").lower()
+    actionable_only = request.args.get("actionable", "true").lower() == "true"
     
     alarms = _check_all_actionable_alarms()
+    
+    if actionable_only:
+        alarms = [a for a in alarms if a.get("severity", "").value != "info"]
     
     if severity_filter:
         alarms = [a for a in alarms if a.get("severity", "").value == severity_filter]
