@@ -21,7 +21,7 @@ from functools import wraps
 
 import requests
 import apprise
-from flask import Flask, jsonify, request, send_from_directory, make_response
+from flask import Flask, jsonify, request, send_from_directory, make_response, current_app
 from flask_cors import CORS
 
 # Redis configuration
@@ -332,7 +332,8 @@ def get_token_from_request():
 def auth_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        if not AUTH_ENABLED:
+        # Allow runtime override via app.config (for testing)
+        if not current_app.config.get('AUTH_ENABLED', AUTH_ENABLED):
             return f(*args, **kwargs)
         
         token = get_token_from_request()
@@ -428,6 +429,51 @@ state = {
     "rate_limit_warnings": [],
 }
 
+STATE_FILE = os.getenv("STATE_FILE", "/app/data/state.json")
+
+def save_state():
+    try:
+        os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
+        # Only persist sets/ids/cooldowns/ips (not full alerts/decisions which are re-fetched)
+        persist = {
+            "known_decision_ids": list(state["known_decision_ids"]),
+            "known_alert_ids": list(state["known_alert_ids"]),
+            "known_alarm_ids": list(state["known_alarm_ids"]),
+            "cooldowns": state["cooldowns"],
+            "known_ips": list(state["known_ips"]),
+            "known_countries": list(state["known_countries"]),
+            "failed_logins": state["failed_logins"],
+            "whitelist_expiry": state["whitelist_expiry"],
+            "rate_limit_warnings": state["rate_limit_warnings"][-50:],
+            "last_digest_sent": state["last_digest_sent"],
+        }
+        with open(STATE_FILE, "w") as f:
+            json.dump(persist, f)
+    except Exception as e:
+        log.error("Failed to save state: %s", e)
+
+def load_state():
+    try:
+        if not os.path.exists(STATE_FILE):
+            return
+        with open(STATE_FILE, "r") as f:
+            data = json.load(f)
+        state["known_decision_ids"] = set(data.get("known_decision_ids", []))
+        state["known_alert_ids"] = set(data.get("known_alert_ids", []))
+        state["known_alarm_ids"] = set(data.get("known_alarm_ids", []))
+        state["cooldowns"] = data.get("cooldowns", {})
+        state["known_ips"] = set(data.get("known_ips", []))
+        state["known_countries"] = set(data.get("known_countries", []))
+        state["failed_logins"] = data.get("failed_logins", {})
+        state["whitelist_expiry"] = data.get("whitelist_expiry", {})
+        state["rate_limit_warnings"] = data.get("rate_limit_warnings", [])
+        state["last_digest_sent"] = data.get("last_digest_sent", time.time())
+        log.info("State loaded from %s", STATE_FILE)
+    except Exception as e:
+        log.error("Failed to load state: %s", e)
+
+load_state()
+
 STATEfulness_lookback_days = 30
 FAILED_LOGIN_THRESHOLD = 5
 FAILED_LOGIN_WINDOW = 600
@@ -490,7 +536,6 @@ def _check_new_attack_sources(decisions):
             new_ips.add(ip)
     
     if new_ips:
-        state["known_ips"].update(new_ips)
         return {
             "type": ActionableAlarmType.NEW_ATTACK_SOURCE,
             "severity": AlarmSeverity.WARNING,
@@ -674,6 +719,11 @@ def _check_all_actionable_alarms():
     whitelist_expiry = _check_whitelist_expiry()
     if whitelist_expiry:
         alarms.append(whitelist_expiry)
+    
+    # Serialize enums to strings for JSON
+    for alarm in alarms:
+        if isinstance(alarm.get("severity"), AlarmSeverity):
+            alarm["severity"] = alarm["severity"].value
     
     return alarms
 
@@ -1153,6 +1203,7 @@ def _do_poll():
 
     state["metrics"] = fetch_metrics()
     _prune_cooldowns()
+    save_state()
 
 def _find_alert_count(ip, scenario):
     for a in state["alerts"]:
@@ -1551,19 +1602,19 @@ def api_alarms():
     alarms = _check_all_actionable_alarms()
     
     if actionable_only:
-        alarms = [a for a in alarms if a.get("severity", "").value != "info"]
+        alarms = [a for a in alarms if a.get("severity", "") != "info"]
     
     if severity_filter:
-        alarms = [a for a in alarms if a.get("severity", "").value == severity_filter]
+        alarms = [a for a in alarms if a.get("severity", "") == severity_filter]
     if alarm_type_filter:
         alarms = [a for a in alarms if a.get("type", "") == alarm_type_filter]
     
     return jsonify({
         "alarms": alarms,
         "total": len(alarms),
-        "critical_count": len([a for a in alarms if a.get("severity", "").value == "critical"]),
-        "warning_count": len([a for a in alarms if a.get("severity", "").value == "warning"]),
-        "info_count": len([a for a in alarms if a.get("severity", "").value == "info"]),
+        "critical_count": len([a for a in alarms if a.get("severity", "") == "critical"]),
+        "warning_count": len([a for a in alarms if a.get("severity", "") == "warning"]),
+        "info_count": len([a for a in alarms if a.get("severity", "") == "info"]),
     })
 
 @app.route("/api/alarms/<alarm_type>/dismiss", methods=["POST"])
@@ -1571,7 +1622,13 @@ def api_alarms():
 @auth_required
 @audit_logged("api_alarms_dismiss")
 def api_alarms_dismiss(alarm_type):
-    if alarm_type == ActionableAlarmType.RATE_LIMIT_WARNING:
+    if alarm_type == ActionableAlarmType.NEW_ATTACK_SOURCE:
+        # Mark current decisions as known so alarm doesn't re-trigger
+        for d in state["decisions"]:
+            ip = d.get("value")
+            if ip and ip != "—":
+                state["known_ips"].add(ip)
+    elif alarm_type == ActionableAlarmType.RATE_LIMIT_WARNING:
         state["rate_limit_warnings"] = []
     return jsonify({"ok": True})
 

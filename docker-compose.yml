@@ -1,7 +1,18 @@
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: crowdsec-redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    networks:
+      - traefik_cloudflared_default
+
   crowdsec-dashboard:
     build:
       context: .
+    image: crowdsec-dashboard:latest
     container_name: crowdsec-dashboard
     restart: unless-stopped
     networks:
@@ -17,6 +28,8 @@ services:
       BAN_THRESHOLD: "0"
       NOTIFY_COOLDOWN: "3600"
       DIGEST_INTERVAL: "0"
+      # ⚠️ WARNING: UNSECURE=true disables authentication on ALL endpoints.
+      # Only use for local development. Never enable in production.
       UNSECURE: "true"
       LOG_LEVEL: "INFO"
     ports:
@@ -27,6 +40,9 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+
+volumes:
+  redis_data:
 
 networks:
   traefik_cloudflared_default:
