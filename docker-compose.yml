@@ -10,9 +10,7 @@ services:
       - traefik_cloudflared_default
 
   crowdsec-dashboard:
-    build:
-      context: .
-    image: crowdsec-dashboard:latest
+    image: ghcr.io/hexrebuilt/crowdsec-dashboard:latest
     container_name: crowdsec-dashboard
     restart: unless-stopped
     networks:
