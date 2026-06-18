@@ -421,8 +421,8 @@ state = {
     "digest_buffer":       [],
     "last_digest_sent":    time.time(),
     "alarm_correlations":  {},
-    "known_ips":           set(),
-    "known_countries":     set(),
+    "known_ips":           {},
+    "known_countries":     {},
     "failed_logins":       {},
     "api_errors":          [],
     "whitelist_expiry":    {},
@@ -440,8 +440,8 @@ def save_state():
             "known_alert_ids": list(state["known_alert_ids"]),
             "known_alarm_ids": list(state["known_alarm_ids"]),
             "cooldowns": state["cooldowns"],
-            "known_ips": list(state["known_ips"]),
-            "known_countries": list(state["known_countries"]),
+            "known_ips": state["known_ips"],
+            "known_countries": state["known_countries"],
             "failed_logins": state["failed_logins"],
             "whitelist_expiry": state["whitelist_expiry"],
             "rate_limit_warnings": state["rate_limit_warnings"][-50:],
@@ -462,8 +462,8 @@ def load_state():
         state["known_alert_ids"] = set(data.get("known_alert_ids", []))
         state["known_alarm_ids"] = set(data.get("known_alarm_ids", []))
         state["cooldowns"] = data.get("cooldowns", {})
-        state["known_ips"] = set(data.get("known_ips", []))
-        state["known_countries"] = set(data.get("known_countries", []))
+        state["known_ips"] = data.get("known_ips", {})
+        state["known_countries"] = data.get("known_countries", {})
         state["failed_logins"] = data.get("failed_logins", {})
         state["whitelist_expiry"] = data.get("whitelist_expiry", {})
         state["rate_limit_warnings"] = data.get("rate_limit_warnings", [])
@@ -473,6 +473,12 @@ def load_state():
         log.error("Failed to load state: %s", e)
 
 load_state()
+
+def _prune_known_entities():
+    """Remove entries older than STATEfulness_lookback_days from known_ips and known_countries."""
+    cutoff = time.time() - (STATEfulness_lookback_days * 86400)
+    state["known_ips"] = {k: v for k, v in state["known_ips"].items() if v > cutoff}
+    state["known_countries"] = {k: v for k, v in state["known_countries"].items() if v > cutoff}
 
 STATEfulness_lookback_days = 30
 FAILED_LOGIN_THRESHOLD = 5
@@ -530,10 +536,19 @@ class ActionableAlarmType:
 
 def _check_new_attack_sources(decisions):
     new_ips = set()
+    now = time.time()
+    cutoff = now - (STATEfulness_lookback_days * 86400)
+    
+    # Prune stale entries
+    state["known_ips"] = {k: v for k, v in state["known_ips"].items() if v > cutoff}
+    
     for d in decisions:
         ip = d.get("value")
-        if ip and ip != "—" and ip not in state["known_ips"]:
-            new_ips.add(ip)
+        if ip and ip != "—":
+            last_seen = state["known_ips"].get(ip)
+            if not last_seen or last_seen < cutoff:
+                new_ips.add(ip)
+                state["known_ips"][ip] = now
     
     if new_ips:
         return {
@@ -541,7 +556,7 @@ def _check_new_attack_sources(decisions):
             "severity": AlarmSeverity.WARNING,
             "count": len(new_ips),
             "ips": list(new_ips)[:10],
-            "message": f"{len(new_ips)} new attack source(s) detected - never seen in {STATEfulness_lookback_days} days",
+            "message": f"{len(new_ips)} new attack source(s) detected - not seen in {STATEfulness_lookback_days} days",
             "requires_action": True,
         }
     return None
@@ -623,10 +638,17 @@ def _check_geo_anomalies(decisions):
         if country and country != "—":
             current_countries.add(country)
     
-    new_countries = current_countries - state["known_countries"]
+    now = time.time()
+    cutoff = now - (STATEfulness_lookback_days * 86400)
+    
+    # Prune stale entries
+    state["known_countries"] = {k: v for k, v in state["known_countries"].items() if v > cutoff}
+    
+    new_countries = {c for c in current_countries if c not in state["known_countries"]}
     
     if new_countries and state["known_countries"]:
-        state["known_countries"].update(new_countries)
+        for c in new_countries:
+            state["known_countries"][c] = now
         return {
             "type": ActionableAlarmType.GEO_ANOMALY,
             "severity": AlarmSeverity.WARNING,
@@ -637,7 +659,8 @@ def _check_geo_anomalies(decisions):
         }
     
     if not state["known_countries"] and current_countries:
-        state["known_countries"] = current_countries
+        for c in current_countries:
+            state["known_countries"][c] = now
     
     return None
 
@@ -1213,6 +1236,7 @@ def _find_alert_count(ip, scenario):
     return 0
 
 def _prune_cooldowns():
+    _prune_known_entities()
     cutoff = time.time() - cfg["notify_cooldown"] * 2
     state["cooldowns"] = {k: v for k, v in state["cooldowns"].items() if v > cutoff}
 
@@ -1601,6 +1625,11 @@ def api_alarms():
     
     alarms = _check_all_actionable_alarms()
     
+    # Tag each alarm as new or ongoing
+    for alarm in alarms:
+        alarm_key = f"{alarm.get('type')}:{alarm.get('message', '')}"
+        alarm["is_new"] = alarm_key not in state["known_alarm_ids"]
+    
     if actionable_only:
         alarms = [a for a in alarms if a.get("severity", "") != "info"]
     
@@ -1608,6 +1637,11 @@ def api_alarms():
         alarms = [a for a in alarms if a.get("severity", "") == severity_filter]
     if alarm_type_filter:
         alarms = [a for a in alarms if a.get("type", "") == alarm_type_filter]
+    
+    # Update known_alarm_ids with current alarms
+    for alarm in alarms:
+        alarm_key = f"{alarm.get('type')}:{alarm.get('message', '')}"
+        state["known_alarm_ids"].add(alarm_key)
     
     return jsonify({
         "alarms": alarms,
@@ -1627,7 +1661,7 @@ def api_alarms_dismiss(alarm_type):
         for d in state["decisions"]:
             ip = d.get("value")
             if ip and ip != "—":
-                state["known_ips"].add(ip)
+                state["known_ips"][ip] = time.time()
     elif alarm_type == ActionableAlarmType.RATE_LIMIT_WARNING:
         state["rate_limit_warnings"] = []
     return jsonify({"ok": True})

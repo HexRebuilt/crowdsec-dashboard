@@ -637,6 +637,11 @@ body {
   color: var(--accent);
 }
 
+.badge-new {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
 .alarms-grid {
   display: flex;
   flex-direction: column;

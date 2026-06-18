@@ -813,6 +813,12 @@ function updateAppriseUI() {
       <span class="status-label">Configured</span>
       <span class="status-value ${s.configured ? 'connected' : 'error'}">${s.configured ? 'Yes' : 'No'}</span>
     </div>
+    ${s.urls_count !== undefined ? `
+    <div class="status-line">
+      <span class="status-label">URLs</span>
+      <span class="status-value">${s.urls_count}</span>
+    </div>
+    ` : ''}
   `;
 }
 
@@ -1006,6 +1012,7 @@ function renderAlarms(data) {
     const severityClass = alarm.severity?.value || alarm.severity || 'info';
     const severityLabel = severityClass.toUpperCase();
     const icon = getAlarmIcon(alarm.type);
+    const newBadge = alarm.is_new ? '<span class="badge badge-new" style="margin-left:8px">NEW</span>' : '';
     
     html += `
       <div class="alarm-card alarm-${severityClass}">
@@ -1013,6 +1020,7 @@ function renderAlarms(data) {
           <div class="alarm-icon">${icon}</div>
           <div class="alarm-title">
             <span class="alarm-type">${formatAlarmType(alarm.type)}</span>
+            ${newBadge}
             <span class="alarm-badge badge-${severityClass}">${severityLabel}</span>
           </div>
           <div class="alarm-count">${alarm.count}</div>
@@ -1082,7 +1090,13 @@ function updateAlarmsBadge(data) {
   const badge = document.getElementById('alarms-badge');
   if (!badge) return;
   
-  if (data.critical_count > 0) {
+  const newCount = data.alarms ? data.alarms.filter(a => a.is_new).length : 0;
+  
+  if (newCount > 0) {
+    badge.textContent = newCount;
+    badge.style.display = 'inline';
+    badge.className = 'badge badge-new';
+  } else if (data.critical_count > 0) {
     badge.textContent = data.critical_count;
     badge.style.display = 'inline';
     badge.className = 'badge badge-critical';
