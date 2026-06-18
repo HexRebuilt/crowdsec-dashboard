@@ -9,7 +9,7 @@ services:
     networks:
       - traefik_cloudflared_default
 
-  crowdsec-dashboard:
+   crowdsec-dashboard:
     image: ghcr.io/hexrebuilt/crowdsec-dashboard:latest
     container_name: crowdsec-dashboard
     restart: unless-stopped
@@ -33,6 +33,8 @@ services:
       LOG_LEVEL: "INFO"
     ports:
       - "5000:5000"
+    volumes:
+      - dashboard_state:/app/data
     healthcheck:
       test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:5000/health')"]
       interval: 30s
@@ -42,6 +44,7 @@ services:
 
 volumes:
   redis_data:
+  dashboard_state:
 
 networks:
   traefik_cloudflared_default:

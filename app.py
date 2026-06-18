@@ -427,6 +427,7 @@ state = {
     "api_errors":          [],
     "whitelist_expiry":    {},
     "rate_limit_warnings": [],
+    "notify_rate_limit_window": [],  # timestamps of recent notifications for rate limiting
 }
 
 STATE_FILE = os.getenv("STATE_FILE", "/app/data/state.json")
@@ -445,6 +446,10 @@ def save_state():
             "failed_logins": state["failed_logins"],
             "whitelist_expiry": state["whitelist_expiry"],
             "rate_limit_warnings": state["rate_limit_warnings"][-50:],
+            "notify_rate_limit_window": state["notify_rate_limit_window"][-50:],
+            "manual_review_dismissed": state.get("manual_review_dismissed"),
+            "whitelist_expiry_dismissed": state.get("whitelist_expiry_dismissed"),
+            "api_error_dismissed": state.get("api_error_dismissed"),
             "last_digest_sent": state["last_digest_sent"],
         }
         with open(STATE_FILE, "w") as f:
@@ -467,6 +472,10 @@ def load_state():
         state["failed_logins"] = data.get("failed_logins", {})
         state["whitelist_expiry"] = data.get("whitelist_expiry", {})
         state["rate_limit_warnings"] = data.get("rate_limit_warnings", [])
+        state["notify_rate_limit_window"] = data.get("notify_rate_limit_window", [])
+        state["manual_review_dismissed"] = data.get("manual_review_dismissed")
+        state["whitelist_expiry_dismissed"] = data.get("whitelist_expiry_dismissed")
+        state["api_error_dismissed"] = data.get("api_error_dismissed")
         state["last_digest_sent"] = data.get("last_digest_sent", time.time())
         log.info("State loaded from %s", STATE_FILE)
     except Exception as e:
@@ -485,6 +494,10 @@ FAILED_LOGIN_THRESHOLD = 5
 FAILED_LOGIN_WINDOW = 600
 API_ERROR_THRESHOLD = 2
 WHITELIST_EXPIRY_DAYS = 7
+
+# Notification rate limiting (industry standard: max 1 notification per 5s, max 20/min)
+NOTIFY_RATE_LIMIT_INTERVAL = int(os.getenv("NOTIFY_RATE_LIMIT_INTERVAL", "5"))  # seconds between notifications
+NOTIFY_RATE_LIMIT_MAX_PER_MIN = int(os.getenv("NOTIFY_RATE_LIMIT_MAX_PER_MIN", "20"))  # max per minute
 
 # ---------------------------------------------------------------------------
 # Alarm correlation and severity logic
@@ -619,6 +632,14 @@ def _check_api_connection_errors():
     window_start = now - 300
     
     recent_errors = [e for e in state["api_errors"] if e.get("timestamp", 0) > window_start]
+    
+    # If we had errors but now healthy for 2 minutes, clear the alarm
+    if (len(recent_errors) >= API_ERROR_THRESHOLD and 
+        state.get("api_error_dismissed", 0) > 0 and
+        now - state["api_error_dismissed"] > 120):
+        state["api_errors"] = []
+        state.pop("api_error_dismissed", None)
+        return None
     
     if len(recent_errors) >= API_ERROR_THRESHOLD:
         return {
@@ -1184,11 +1205,15 @@ def _do_poll():
                         log.debug("Ban notify suppressed: %s events < threshold %s", event_count, ban_thr)
                         state["suppressed_count"] += 1
                     else:
-                        send_notification(
-                            title=f"CrowdSec Ban: {ip}",
-                            body=f"Scenario: {scenario}\nType: {dtype}\nOrigin: {origin}\nExpires: {d.get('until','?')}",
-                            ip=ip,
-                        )
+                        if _check_notify_rate_limit():
+                            _record_notification()
+                            send_notification(
+                                title=f"CrowdSec Ban: {ip}",
+                                body=f"Scenario: {scenario}\nType: {dtype}\nOrigin: {origin}\nExpires: {d.get('until','?')}",
+                                ip=ip,
+                            )
+                        else:
+                            log.debug("Ban notification rate limited: %s", ip)
 
         for rid in removed:
             state["events"].appendleft({
@@ -1215,11 +1240,15 @@ def _do_poll():
                         log.debug("Alert suppressed: %s events < threshold %s", count, thr)
                         state["suppressed_count"] += 1
                     else:
-                        send_notification(
-                            title=f"CrowdSec Alert: {scenario}",
-                            body=f"IP: {ip}\nEvents: {count}\nMessage: {a.get('message','')}",
-                            ip=ip,
-                        )
+                        if _check_notify_rate_limit():
+                            _record_notification()
+                            send_notification(
+                                title=f"CrowdSec Alert: {scenario}",
+                                body=f"IP: {ip}\nEvents: {count}\nMessage: {a.get('message','')}",
+                                ip=ip,
+                            )
+                        else:
+                            log.debug("Alert notification rate limited: %s", ip)
 
         state["known_alert_ids"] = new_alert_ids
         state["alerts"] = alerts[:100]
@@ -1239,6 +1268,35 @@ def _prune_cooldowns():
     _prune_known_entities()
     cutoff = time.time() - cfg["notify_cooldown"] * 2
     state["cooldowns"] = {k: v for k, v in state["cooldowns"].items() if v > cutoff}
+
+def _check_notify_rate_limit():
+    """Check if we're within the notification rate limit.
+    Returns True if notification should be sent, False if rate limited."""
+    now = time.time()
+    window_start = now - 60  # 1 minute window
+    
+    # Prune old entries
+    state["notify_rate_limit_window"] = [
+        t for t in state["notify_rate_limit_window"] if t > window_start
+    ]
+    
+    # Check if under per-minute limit
+    if len(state["notify_rate_limit_window"]) >= NOTIFY_RATE_LIMIT_MAX_PER_MIN:
+        log.warning("Notification rate limit reached: %d in last 60s", 
+                    len(state["notify_rate_limit_window"]))
+        return False
+    
+    # Check minimum interval between notifications
+    if state["notify_rate_limit_window"]:
+        last_notify = max(state["notify_rate_limit_window"])
+        if now - last_notify < NOTIFY_RATE_LIMIT_INTERVAL:
+            return False
+    
+    return True
+
+def _record_notification():
+    """Record that a notification was sent for rate limiting."""
+    state["notify_rate_limit_window"].append(time.time())
 
 # ---------------------------------------------------------------------------
 # Auth API
@@ -1656,14 +1714,42 @@ def api_alarms():
 @auth_required
 @audit_logged("api_alarms_dismiss")
 def api_alarms_dismiss(alarm_type):
+    now = time.time()
+    
     if alarm_type == ActionableAlarmType.NEW_ATTACK_SOURCE:
         # Mark current decisions as known so alarm doesn't re-trigger
         for d in state["decisions"]:
             ip = d.get("value")
             if ip and ip != "—":
-                state["known_ips"][ip] = time.time()
+                state["known_ips"][ip] = now
+    
+    elif alarm_type == ActionableAlarmType.MANUAL_REVIEW:
+        # Clear manual review alerts by marking them as reviewed
+        state["manual_review_dismissed"] = now
+    
+    elif alarm_type == ActionableAlarmType.WHITELIST_EXPIRY:
+        # Clear whitelist expiry warnings
+        state["whitelist_expiry_dismissed"] = now
+    
+    elif alarm_type == ActionableAlarmType.FAILED_LOGIN_PATTERN:
+        # Clear failed login tracking
+        state["failed_logins"].clear()
+    
+    elif alarm_type == ActionableAlarmType.API_CONNECTION_ERROR:
+        # Clear API error tracking
+        state["api_errors"].clear()
+        state["api_error_dismissed"] = now
+    
+    elif alarm_type == ActionableAlarmType.GEO_ANOMALY:
+        # Mark all current countries as known
+        for d in state["decisions"]:
+            country = d.get("origin")
+            if country and country != "—":
+                state["known_countries"][country] = now
+    
     elif alarm_type == ActionableAlarmType.RATE_LIMIT_WARNING:
         state["rate_limit_warnings"] = []
+    
     return jsonify({"ok": True})
 
 @app.route("/api/alarms/failed-logins", methods=["POST"])
