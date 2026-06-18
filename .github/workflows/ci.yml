@@ -63,6 +63,8 @@ jobs:
     steps:
       - id: lowercase_owner
         run: echo "owner_lower=${REGISTRY_OWNER,,}" >> "$GITHUB_OUTPUT"
+      - id: short_sha
+        run: echo "sha=${GITHUB_SHA::8}" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@v6.4.0
         with:
           node-version: '20'
@@ -79,9 +81,9 @@ jobs:
           push: true
           tags: |
             ghcr.io/${{ steps.lowercase_owner.outputs.owner_lower }}/crowdsec-dashboard:latest
-            ghcr.io/${{ steps.lowercase_owner.outputs.owner_lower }}/crowdsec-dashboard:sha-${{ github.sha::8 }}
+            ghcr.io/${{ steps.lowercase_owner.outputs.owner_lower }}/crowdsec-dashboard:sha-${{ steps.short_sha.outputs.sha }}
           build-args: |
-            APP_VERSION=${{ github.sha::8 }}
+             APP_VERSION=${{ steps.short_sha.outputs.sha }}
           cache-from: type=registry,ref=ghcr.io/${{ steps.lowercase_owner.outputs.owner_lower }}/crowdsec-dashboard:buildcache
           cache-to: type=registry,ref=ghcr.io/${{ steps.lowercase_owner.outputs.owner_lower }}/crowdsec-dashboard:buildcache,mode=max
       - name: Push version tag
