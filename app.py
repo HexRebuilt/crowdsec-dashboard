@@ -451,6 +451,13 @@ def save_state():
             "whitelist_expiry_dismissed": state.get("whitelist_expiry_dismissed"),
             "api_error_dismissed": state.get("api_error_dismissed"),
             "last_digest_sent": state["last_digest_sent"],
+            "apprise_urls": cfg.get("apprise_urls", ""),
+            "notify_on_ban": cfg.get("notify_on_ban"),
+            "notify_on_alert": cfg.get("notify_on_alert"),
+            "alert_threshold": cfg.get("alert_threshold"),
+            "ban_threshold": cfg.get("ban_threshold"),
+            "notify_cooldown": cfg.get("notify_cooldown"),
+            "digest_interval": cfg.get("digest_interval"),
         }
         with open(STATE_FILE, "w") as f:
             json.dump(persist, f)
@@ -477,6 +484,13 @@ def load_state():
         state["whitelist_expiry_dismissed"] = data.get("whitelist_expiry_dismissed")
         state["api_error_dismissed"] = data.get("api_error_dismissed")
         state["last_digest_sent"] = data.get("last_digest_sent", time.time())
+        cfg["apprise_urls"] = data.get("apprise_urls", "")
+        cfg["notify_on_ban"] = data.get("notify_on_ban", True)
+        cfg["notify_on_alert"] = data.get("notify_on_alert", True)
+        cfg["alert_threshold"] = data.get("alert_threshold", 10)
+        cfg["ban_threshold"] = data.get("ban_threshold", 50)
+        cfg["notify_cooldown"] = data.get("notify_cooldown", 3600)
+        cfg["digest_interval"] = data.get("digest_interval", 0)
         log.info("State loaded from %s", STATE_FILE)
     except Exception as e:
         log.error("Failed to load state: %s", e)
@@ -1659,6 +1673,7 @@ def api_config_patch():
         cfg[key] = val
         updated[key] = val
     log.info("Config updated: %s", updated)
+    save_state()
     return jsonify({"ok": True, "updated": updated, "config": cfg})
 
 @app.route("/api/decisions")
@@ -1839,6 +1854,7 @@ def api_apprise_status():
                 "api_reachable": r.status_code == 200,
                 "config_key": APPRISE_CONFIG_KEY,
                 "urls_count": len(_apprise_api_get_urls()),
+                "configured": True,
                 "apprise_configured": True,
             })
         except Exception as e:
@@ -1855,6 +1871,7 @@ def api_apprise_status():
             "mode": "embedded",
             "urls_count": len(urls),
             "urls": urls[:3] if urls else [],
+            "configured": len(urls) > 0,
             "apprise_configured": len(urls) > 0,
         })
 
@@ -1888,6 +1905,7 @@ def api_apprise_urls_set():
         return jsonify({"ok": False, "error": "Failed to set URLs in Apprise API"}), 500
     else:
         cfg["apprise_urls"] = ",".join(urls)
+        save_state()
         log.info("Embedded Apprise URLs set: %s", urls)
         return jsonify({"ok": True, "mode": "embedded", "urls": urls})
 

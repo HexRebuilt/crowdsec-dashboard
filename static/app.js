@@ -425,6 +425,10 @@ async function checkAuth() {
     
     updateAuthMethodSelect();
     
+    if (state.auth.enabled) {
+      loadAuthProviderSettings();
+    }
+    
     if (!status.enabled) {
       showApp();
       await initApp();
@@ -995,6 +999,16 @@ async function loadAlarms() {
   }
 }
 
+async function dismissAlarm(type) {
+  try {
+    await api(`/api/alarms/${type}/dismiss`, { method: 'POST' });
+    showToast('Alarm dismissed');
+    loadAlarms();
+  } catch (e) {
+    showToast('Failed to dismiss alarm', 'error');
+  }
+}
+
 function renderAlarms(data) {
   const container = document.getElementById('alarms-container');
   const emptyState = document.getElementById('alarms-empty');
@@ -1013,6 +1027,7 @@ function renderAlarms(data) {
     const severityLabel = severityClass.toUpperCase();
     const icon = getAlarmIcon(alarm.type);
     const newBadge = alarm.is_new ? '<span class="badge badge-new" style="margin-left:8px">NEW</span>' : '';
+    const dismissBtn = `<button class="btn btn-sm btn-secondary alarm-dismiss" data-type="${alarm.type}" style="margin-left:8px">Dismiss</button>`;
     
     html += `
       <div class="alarm-card alarm-${severityClass}">
@@ -1024,6 +1039,7 @@ function renderAlarms(data) {
             <span class="alarm-badge badge-${severityClass}">${severityLabel}</span>
           </div>
           <div class="alarm-count">${alarm.count}</div>
+          ${dismissBtn}
         </div>
         <div class="alarm-message">${alarm.message}</div>
         <div class="alarm-details">${renderAlarmDetails(alarm)}</div>
@@ -1134,6 +1150,15 @@ document.addEventListener('DOMContentLoaded', () => {
   
   document.getElementById('refresh-alarms')?.addEventListener('click', loadAlarms);
   document.getElementById('alarm-severity-filter')?.addEventListener('change', loadAlarms);
+  
+  document.addEventListener('click', (e) => {
+    if (e.target.classList.contains('alarm-dismiss')) {
+      const type = e.target.dataset.type;
+      if (type && confirm('Dismiss this alarm?')) {
+        dismissAlarm(type);
+      }
+    }
+  });
   
   checkAuth();
 });

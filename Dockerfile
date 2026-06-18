@@ -11,6 +11,7 @@ COPY app.py .
 COPY static ./static
 
 RUN mkdir -p /var/log/crowdsec-dashboard
+RUN mkdir -p /app/data
 RUN chown -R appuser:appuser /app
 USER appuser
 
