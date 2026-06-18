@@ -26,6 +26,9 @@ jobs:
       - run: pytest itest/ -v --tb=short
 
   vulnerability-scan:
+    permissions:
+      security-events: write
+      contents: read
     runs-on: ubuntu-latest
     steps:
       - uses: actions/setup-node@v6.4.0
@@ -42,13 +45,16 @@ jobs:
           severity: 'HIGH,CRITICAL'
           ignore-unfixed: true
       - name: Upload Trivy results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3.36.2
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: 'trivy-results.sarif'
           category: 'trivy-fs'
 
   build:
     needs: [test, vulnerability-scan]
+    permissions:
+      security-events: write
+      contents: read
     runs-on: ubuntu-latest
     if: github.event_name == 'push'
     steps:
@@ -79,7 +85,7 @@ jobs:
           severity: 'HIGH,CRITICAL'
           ignore-unfixed: true
       - name: Upload image scan results
-        uses: github/codeql-action/upload-sarif@v3.36.2
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: 'trivy-image-results.sarif'
           category: 'trivy-image'
