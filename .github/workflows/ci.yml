@@ -53,6 +53,7 @@ jobs:
   build:
     needs: [test, vulnerability-scan]
     permissions:
+      packages: write
       security-events: write
       contents: read
     runs-on: ubuntu-latest
