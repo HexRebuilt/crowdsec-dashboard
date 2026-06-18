@@ -355,6 +355,9 @@ cfg = {
     "notify_cooldown":    int(os.getenv("NOTIFY_COOLDOWN", "3600")),
     "digest_interval":    int(os.getenv("DIGEST_INTERVAL", "0")),
     "apprise_urls":       os.getenv("APPRISE_URLS", ""),
+    "events_per_minute_threshold": int(os.getenv("EVENTS_PER_MINUTE_THRESHOLD", "100")),
+    "events_per_hour_threshold":   int(os.getenv("EVENTS_PER_HOUR_THRESHOLD", "1000")),
+    "events_per_day_threshold":    int(os.getenv("EVENTS_PER_DAY_THRESHOLD", "10000")),
 }
 
 # ---------------------------------------------------------------------------
@@ -428,6 +431,7 @@ state = {
     "whitelist_expiry":    {},
     "rate_limit_warnings": [],
     "notify_rate_limit_window": [],  # timestamps of recent notifications for rate limiting
+    "event_rate_window": [],  # timestamps of recent events for rate calculation
 }
 
 STATE_FILE = os.getenv("STATE_FILE", "/app/data/state.json")
@@ -458,6 +462,10 @@ def save_state():
             "ban_threshold": cfg.get("ban_threshold"),
             "notify_cooldown": cfg.get("notify_cooldown"),
             "digest_interval": cfg.get("digest_interval"),
+            "events_per_minute_threshold": cfg.get("events_per_minute_threshold"),
+            "events_per_hour_threshold": cfg.get("events_per_hour_threshold"),
+            "events_per_day_threshold": cfg.get("events_per_day_threshold"),
+            "event_rate_window": state["event_rate_window"][-1000:],
         }
         with open(STATE_FILE, "w") as f:
             json.dump(persist, f)
@@ -491,6 +499,10 @@ def load_state():
         cfg["ban_threshold"] = data.get("ban_threshold", 50)
         cfg["notify_cooldown"] = data.get("notify_cooldown", 3600)
         cfg["digest_interval"] = data.get("digest_interval", 0)
+        cfg["events_per_minute_threshold"] = data.get("events_per_minute_threshold", 100)
+        cfg["events_per_hour_threshold"] = data.get("events_per_hour_threshold", 1000)
+        cfg["events_per_day_threshold"] = data.get("events_per_day_threshold", 10000)
+        state["event_rate_window"] = data.get("event_rate_window", [])
         log.info("State loaded from %s", STATE_FILE)
     except Exception as e:
         log.error("Failed to load state: %s", e)
@@ -590,26 +602,30 @@ def _check_new_attack_sources(decisions):
 
 def _check_manual_review_alerts(alerts):
     review_needed = []
+    events_per_min = _calculate_event_rate(60)
+    
     for a in alerts:
         scenario = a.get("scenario", "")
         events_count = a.get("events_count", 0)
         ip = (a.get("source") or {}).get("ip", "?")
         
-        if events_count >= cfg["alert_threshold"] * 0.5 and events_count < cfg["alert_threshold"]:
+        # Rate-based: flag if approaching threshold based on current rate
+        if events_per_min >= cfg["events_per_minute_threshold"] * 0.5:
             review_needed.append({
                 "id": a.get("id"),
                 "ip": ip,
                 "scenario": scenario,
                 "events": events_count,
+                "rate_per_min": events_per_min,
             })
     
     if review_needed:
         return {
             "type": ActionableAlarmType.MANUAL_REVIEW,
-            "severity": AlarmSeverity.INFO,
+            "severity": AlarmSeverity.WARNING,
             "count": len(review_needed),
             "alerts": review_needed[:10],
-            "message": f"{len(review_needed)} alert(s) need manual review - near threshold",
+            "message": f"High event rate: {events_per_min} events/min (threshold: {cfg['events_per_minute_threshold']}/min) — possible attack in progress",
             "requires_action": True,
         }
     return None
@@ -1268,6 +1284,15 @@ def _do_poll():
         state["alerts"] = alerts[:100]
 
     state["metrics"] = fetch_metrics()
+    
+    # Record events for rate calculation
+    if decisions:
+        for d in decisions:
+            _record_event()
+    if alerts:
+        for a in alerts:
+            _record_event()
+    
     _prune_cooldowns()
     save_state()
 
@@ -1282,6 +1307,28 @@ def _prune_cooldowns():
     _prune_known_entities()
     cutoff = time.time() - cfg["notify_cooldown"] * 2
     state["cooldowns"] = {k: v for k, v in state["cooldowns"].items() if v > cutoff}
+
+def _calculate_event_rate(window_seconds):
+    """Calculate events per minute/hour/day based on recent event timestamps."""
+    now = time.time()
+    cutoff = now - window_seconds
+    recent = [t for t in state["event_rate_window"] if t > cutoff]
+    state["event_rate_window"] = recent
+    
+    if window_seconds == 60:  # per minute
+        return len(recent)
+    elif window_seconds == 3600:  # per hour
+        return len(recent)
+    elif window_seconds == 86400:  # per day
+        return len(recent)
+    return len(recent)
+
+def _record_event():
+    """Record an event timestamp for rate calculation."""
+    state["event_rate_window"].append(time.time())
+    # Keep only last 24 hours
+    cutoff = time.time() - 86400
+    state["event_rate_window"] = [t for t in state["event_rate_window"] if t > cutoff]
 
 def _check_notify_rate_limit():
     """Check if we're within the notification rate limit.
@@ -1661,12 +1708,14 @@ def api_config_get():
 def api_config_patch():
     data = request.get_json(force=True, silent=True) or {}
     allowed = {"notify_on_ban", "notify_on_alert", "alert_threshold",
-               "ban_threshold", "notify_cooldown", "digest_interval", "apprise_urls"}
+               "ban_threshold", "notify_cooldown", "digest_interval", "apprise_urls",
+               "events_per_minute_threshold", "events_per_hour_threshold", "events_per_day_threshold"}
     updated = {}
     for key, val in data.items():
         if key not in allowed:
             continue
-        if key in ("alert_threshold", "ban_threshold", "notify_cooldown", "digest_interval"):
+        if key in ("alert_threshold", "ban_threshold", "notify_cooldown", "digest_interval",
+                   "events_per_minute_threshold", "events_per_hour_threshold", "events_per_day_threshold"):
             val = int(val)
         elif key in ("notify_on_ban", "notify_on_alert"):
             val = bool(val)

@@ -695,9 +695,14 @@ function updateConfigUI() {
   const c = state.config;
   document.getElementById('notify-ban').checked = c.notify_on_ban;
   document.getElementById('notify-alert').checked = c.notify_on_alert;
-  document.getElementById('alert-threshold').value = c.alert_threshold;
-  document.getElementById('ban-threshold').value = c.ban_threshold;
-  document.getElementById('notify-cooldown').value = c.notify_cooldown;
+  document.getElementById('alert-threshold').value = c.alert_threshold || 10;
+  document.getElementById('ban-threshold').value = c.ban_threshold || 50;
+  document.getElementById('notify-cooldown').value = c.notify_cooldown || 3600;
+  
+  // Rate-based thresholds
+  document.getElementById('events-per-minute').value = c.events_per_minute_threshold || 100;
+  document.getElementById('events-per-hour').value = c.events_per_hour_threshold || 1000;
+  document.getElementById('events-per-day').value = c.events_per_day_threshold || 10000;
 }
 
 function updateDecisionsUI() {
@@ -830,7 +835,10 @@ async function saveConfig() {
     notify_on_alert: document.getElementById('notify-alert').checked,
     alert_threshold: parseInt(document.getElementById('alert-threshold').value) || 0,
     ban_threshold: parseInt(document.getElementById('ban-threshold').value) || 0,
-    notify_cooldown: parseInt(document.getElementById('notify-cooldown').value) || 0
+    notify_cooldown: parseInt(document.getElementById('notify-cooldown').value) || 0,
+    events_per_minute_threshold: parseInt(document.getElementById('events-per-minute').value) || 100,
+    events_per_hour_threshold: parseInt(document.getElementById('events-per-hour').value) || 1000,
+    events_per_day_threshold: parseInt(document.getElementById('events-per-day').value) || 10000,
   };
   
   try {
@@ -964,15 +972,13 @@ async function initApp() {
   setupAutoRefresh();
   initResizableColumns();
   
-  await Promise.all([
-    loadStatus(),
-    loadConfig(),
-    loadDecisions(),
-    loadAppriseStatus(),
-    loadAppriseUrls(),
-    loadAuthProviderSettings()
-  ]);
-  
+  // Sequential load to avoid race conditions — auth/apprise must load after status
+  await loadStatus();
+  await loadConfig();
+  await loadDecisions();
+  await loadAppriseStatus();
+  await loadAppriseUrls();
+  await loadAuthProviderSettings();
   await loadStatistics();
   
   setInterval(loadStatus, 30000);
