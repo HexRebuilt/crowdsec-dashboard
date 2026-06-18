@@ -652,7 +652,8 @@ function updateStatusUI() {
     text.textContent = 'Online';
   }
   
-  document.getElementById('decisions-count').textContent = s.total_bans || 0;
+  const decisionsCountEl = document.getElementById('decisions-count');
+  if (decisionsCountEl) decisionsCountEl.textContent = s.total_bans || 0;
   
   document.getElementById('connection-status').innerHTML = `
     <div class="status-line">
@@ -979,9 +980,9 @@ function initAlarms() {
   document.getElementById('alarm-severity-filter')?.addEventListener('change', loadAlarms);
 }
 
-function initSettings() {
+async function initSettings() {
+  await loadConfig();
   loadStatus();
-  loadConfig();
   loadAppriseStatus();
   loadAppriseUrls();
   loadAuthProviderSettings();
@@ -989,6 +990,10 @@ function initSettings() {
   
   setInterval(loadStatus, 30000);
   setInterval(loadStatistics, 86400000);
+  
+  document.getElementById('save-config')?.addEventListener('click', saveConfig);
+  document.getElementById('test-notify')?.addEventListener('click', testNotification);
+  document.getElementById('save-apprise')?.addEventListener('click', saveAppriseUrls);
 }
 
 function setupSearch() {
