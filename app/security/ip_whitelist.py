@@ -1,3 +1,4 @@
+import logging
 from typing import List, Dict, Any
 import ipaddress
 
@@ -20,7 +21,7 @@ class IPWhitelist:
                     ip = ipaddress.ip_address(entry)
                     self.ip_networks.append(ip)
                 except ValueError:
-                    print(f'Invalid IP whitelist entry: {entry}')
+                    logging.warning('Invalid IP whitelist entry: %s', entry)
     
     def is_allowed(self, ip: str) -> bool:
         try:

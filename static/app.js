@@ -22,6 +22,14 @@ const state = {
   }
 };
 
+
+// Escape HTML special characters to prevent XSS
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
 const SCENARIO_DESCRIPTIONS = {
   "http-crawl": "Automated bot crawling your website to find vulnerabilities",
   "http-sql-injection": "SQL injection attack attempt - attacker tries to inject malicious SQL code",
@@ -475,7 +483,7 @@ function updateAuthMethodSelect() {
       </div>
       <div class="status-line">
         <span class="status-label">Provider</span>
-        <span class="status-value">${state.auth.auth0Domain || 'External'}</span>
+        <span class="status-value">${escapeHtml(state.auth.auth0Domain || 'External')}</span>
       </div>
       <p class="settings-note">SSO is configured via environment variables.</p>
     `;
@@ -489,7 +497,7 @@ function updateAuthMethodSelect() {
     </div>
     <div class="status-line">
       <span class="status-label">Username</span>
-      <span class="status-value">${state.auth.username || '—'}</span>
+      <span class="status-value">${escapeHtml(state.auth.username || '—')}</span>
     </div>
     <p class="settings-note">To switch to SSO, configure AUTH0_DOMAIN, AUTH0_CLIENT_ID, and AUTH0_CLIENT_SECRET environment variables.</p>
   `;
@@ -563,11 +571,11 @@ function updateAuthSettingsUI(data) {
     authContent.innerHTML = `
       <div class="status-line">
         <span class="status-label">Logged in as</span>
-        <span class="status-value">${state.auth.username}</span>
+        <span class="status-value">${escapeHtml(state.auth.username)}</span>
       </div>
       <div class="status-line">
         <span class="status-label">Username</span>
-        <span class="status-value code">${data.credentials?.username || '—'}</span>
+        <span class="status-value code">${escapeHtml(data.credentials?.username || '—')}</span>
       </div>
       <button id="change-password-btn" class="btn btn-secondary" style="margin-top:12px">Change Password</button>
     `;
@@ -576,7 +584,7 @@ function updateAuthSettingsUI(data) {
     authContent.innerHTML = `
       <div class="status-line">
         <span class="status-label">Logged in as</span>
-        <span class="status-value">${state.auth.username}</span>
+        <span class="status-value">${escapeHtml(state.auth.username)}</span>
       </div>
       <p class="settings-note">Account managed by SSO provider.</p>
     `;
@@ -658,11 +666,11 @@ function updateStatusUI() {
     connectionStatus.innerHTML = `
       <div class="status-line">
         <span class="status-label">CrowdSec URL</span>
-        <span class="status-value code">${s.crowdsec_url || '—'}</span>
+        <span class="status-value code">${escapeHtml(s.crowdsec_url || '—')}</span>
       </div>
       <div class="status-line">
         <span class="status-label">Apprise Mode</span>
-        <span class="status-value">${s.apprise_mode || '—'}</span>
+        <span class="status-value">${escapeHtml(s.apprise_mode || '—')}</span>
       </div>
       <div class="status-line">
         <span class="status-label">Apprise Configured</span>
@@ -682,19 +690,19 @@ function updateStatusUI() {
   document.getElementById('stats-content').innerHTML = `
     <div class="status-line">
       <span class="status-label">Active Bans</span>
-      <span class="status-value">${s.total_bans || 0}</span>
+      <span class="status-value">${escapeHtml(s.total_bans || 0)}</span>
     </div>
     <div class="status-line">
       <span class="status-label">Alerts</span>
-      <span class="status-value">${s.total_alerts || 0}</span>
+      <span class="status-value">${escapeHtml(s.total_alerts || 0)}</span>
     </div>
     <div class="status-line">
       <span class="status-label">Notifications Sent</span>
-      <span class="status-value">${s.sent_count || 0}</span>
+      <span class="status-value">${escapeHtml(s.sent_count || 0)}</span>
     </div>
     <div class="status-line">
       <span class="status-label">Suppressed</span>
-      <span class="status-value">${s.suppressed_count || 0}</span>
+      <span class="status-value">${escapeHtml(s.suppressed_count || 0)}</span>
     </div>
   `;
 }
@@ -727,10 +735,10 @@ function updateDecisionsUI() {
   
   tbody.innerHTML = page.map(d => `
     <tr>
-      <td class="ip-cell">${d.ip || '—'}</td>
-      <td onmouseover="showTooltip(event, getScenarioDescription('${d.scenario || ''}'))" onmouseout="hideTooltip()">${d.scenario || '—'}</td>
+      <td class="ip-cell">${escapeHtml(d.ip || '—')}</td>
+      <td onmouseover="showTooltip(event, getScenarioDescription('${escapeHtml(d.scenario || '')}'))" onmouseout="hideTooltip()">${escapeHtml(d.scenario || '—')}</td>
       <td>${timeAgo(d.created_at)}</td>
-      <td><button class="btn btn-danger btn-sm" onclick="deleteDecision('${d.ip.replace(/'/g, "\\'")}')">Delete</button></td>
+      <td><button class="btn btn-danger btn-sm" onclick="deleteDecision('${escapeHtml(d.ip.replace(/'/g, "\\'"))}')">Delete</button></td>
     </tr>
   `).join('');
   
@@ -822,7 +830,7 @@ function updateAppriseUI() {
   document.getElementById('apprise-status').innerHTML = `
     <div class="status-line">
       <span class="status-label">Mode</span>
-      <span class="status-value">${s.mode || '—'}</span>
+      <span class="status-value">${escapeHtml(s.mode || '—')}</span>
     </div>
     <div class="status-line">
       <span class="status-label">Configured</span>
@@ -1098,21 +1106,21 @@ function renderAlarms(data) {
     const severityLabel = severityClass.toUpperCase();
     const icon = getAlarmIcon(alarm.type);
     const newBadge = alarm.is_new ? '<span class="badge badge-new" style="margin-left:8px">NEW</span>' : '';
-    const dismissBtn = `<button class="btn btn-sm btn-secondary alarm-dismiss" data-type="${alarm.type}" style="margin-left:8px">Dismiss</button>`;
+    const dismissBtn = `<button class="btn btn-sm btn-secondary alarm-dismiss" data-type="${escapeHtml(alarm.type)}" style="margin-left:8px">Dismiss</button>`;
     
     html += `
       <div class="alarm-card alarm-${severityClass}">
         <div class="alarm-header">
           <div class="alarm-icon">${icon}</div>
           <div class="alarm-title">
-            <span class="alarm-type">${formatAlarmType(alarm.type)}</span>
+            <span class="alarm-type">${escapeHtml(formatAlarmType(alarm.type))}</span>
             ${newBadge}
-            <span class="alarm-badge badge-${severityClass}">${severityLabel}</span>
+            <span class="alarm-badge badge-${severityClass}">${escapeHtml(severityLabel)}</span>
           </div>
-          <div class="alarm-count">${alarm.count}</div>
+          <div class="alarm-count">${escapeHtml(alarm.count)}</div>
           ${dismissBtn}
         </div>
-        <div class="alarm-message">${alarm.message}</div>
+        <div class="alarm-message">${escapeHtml(alarm.message)}</div>
         <div class="alarm-details">${renderAlarmDetails(alarm)}</div>
       </div>
     `;
@@ -1156,16 +1164,16 @@ function renderAlarmDetails(alarm) {
   let details = '<div class="alarm-data">';
   
   if (alarm.ips && alarm.ips.length > 0) {
-    details += '<div class="alarm-data-row"><strong>IPs:</strong> ' + alarm.ips.slice(0, 5).join(', ') + (alarm.ips.length > 5 ? '...' : '') + '</div>';
+    details += '<div class="alarm-data-row"><strong>IPs:</strong> ' + alarm.ips.slice(0, 5).map(escapeHtml).join(', ') + (alarm.ips.length > 5 ? '...' : '') + '</div>';
   }
   
   if (alarm.countries && alarm.countries.length > 0) {
-    details += '<div class="alarm-data-row"><strong>Countries:</strong> ' + alarm.countries.join(', ') + '</div>';
+    details += '<div class="alarm-data-row"><strong>Countries:</strong> ' + alarm.countries.map(escapeHtml).join(', ') + '</div>';
   }
   
   if (alarm.entries && alarm.entries.length > 0) {
     for (const entry of alarm.entries.slice(0, 3)) {
-      details += `<div class="alarm-data-row"><strong>${entry.ip}</strong> - Expires: ${entry.expires || 'unknown'}</div>`;
+      details += `<div class="alarm-data-row"><strong>${escapeHtml(entry.ip)}</strong> - Expires: ${escapeHtml(entry.expires || 'unknown')}</div>`;
     }
   }
   
