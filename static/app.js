@@ -836,7 +836,7 @@ async function saveConfig() {
     notify_on_alert: document.getElementById('notify-alert').checked,
     alert_threshold: parseInt(document.getElementById('alert-threshold').value) || 0,
     ban_threshold: parseInt(document.getElementById('ban-threshold').value) || 0,
-    notify_cooldown: parseInt(document.getElementById('notify-cooldown').value) || 3600,
+    notify_cooldown: parseInt(document.getElementById('notify-cooldown').value) || 0,
     events_per_minute_threshold: parseInt(document.getElementById('events-per-minute').value) || 100,
     events_per_hour_threshold: parseInt(document.getElementById('events-per-hour').value) || 1000,
     events_per_day_threshold: parseInt(document.getElementById('events-per-day').value) || 10000,

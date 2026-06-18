@@ -77,9 +77,18 @@ jobs:
         with:
           context: .
           push: true
-          tags: ghcr.io/${{ steps.lowercase_owner.outputs.owner_lower }}/crowdsec-dashboard:latest
+          tags: |
+            ghcr.io/${{ steps.lowercase_owner.outputs.owner_lower }}/crowdsec-dashboard:latest
+            ghcr.io/${{ steps.lowercase_owner.outputs.owner_lower }}/crowdsec-dashboard:sha-${{ github.sha::8 }}
+          build-args: |
+            APP_VERSION=${{ github.sha::8 }}
           cache-from: type=registry,ref=ghcr.io/${{ steps.lowercase_owner.outputs.owner_lower }}/crowdsec-dashboard:buildcache
           cache-to: type=registry,ref=ghcr.io/${{ steps.lowercase_owner.outputs.owner_lower }}/crowdsec-dashboard:buildcache,mode=max
+      - name: Push version tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          docker tag ghcr.io/${{ steps.lowercase_owner.outputs.owner_lower }}/crowdsec-dashboard:latest ghcr.io/${{ steps.lowercase_owner.outputs.owner_lower }}/crowdsec-dashboard:${{ github.ref_name }}
+          docker push ghcr.io/${{ steps.lowercase_owner.outputs.owner_lower }}/crowdsec-dashboard:${{ github.ref_name }}
       - name: Scan built image for vulnerabilities
         uses: aquasecurity/trivy-action@v0.36.0
         with:

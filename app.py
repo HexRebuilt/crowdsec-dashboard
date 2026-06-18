@@ -24,6 +24,8 @@ import apprise
 from flask import Flask, jsonify, request, send_from_directory, make_response, current_app
 from flask_cors import CORS
 
+APP_VERSION = os.getenv("APP_VERSION", "dev")
+
 # Redis configuration
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379")
 REDIS_TIMEOUT = int(os.getenv("REDIS_TIMEOUT", "300"))
@@ -136,7 +138,7 @@ def initialize_password():
         log.info("=" * 60)
         log.info("GENERATED RANDOM PASSWORD (save this securely):")
         log.info("  Username: %s", AUTH_USERNAME or "admin")
-        log.info("  Password: %s", random_password)
+        log.info("  Password: [REDACTED]")
         log.info("=" * 60)
         return random_password
     
@@ -433,6 +435,7 @@ state = {
     "notify_rate_limit_window": [],  # timestamps of recent notifications for rate limiting
     "event_rate_window": [],  # timestamps of recent events for rate calculation
     "_initial_poll_done": False,
+    "_skip_notifications_this_poll": False,
 }
 
 STATE_FILE = os.getenv("STATE_FILE", "/app/data/state.json")
@@ -511,6 +514,9 @@ def load_state():
         log.error("Failed to load state: %s", e)
 
 load_state()
+
+# Skip notifications on first poll after process restart
+state["_skip_notifications_this_poll"] = True
 
 def _prune_known_entities():
     """Remove entries older than STATEfulness_lookback_days from known_ips and known_countries."""
@@ -1218,6 +1224,8 @@ def _do_poll():
     now_str = datetime.now(timezone.utc).isoformat()
     state["last_poll"] = now_str
 
+    skip_notifications = state.pop("_skip_notifications_this_poll", False)
+
     if not state.get("_initial_poll_done", False):
         # First poll after restart: populate state but skip notifications
         decisions = fetch_decisions()
@@ -1261,7 +1269,7 @@ def _do_poll():
                 msg = f"BAN {ip} [{dtype}] via {origin} - {scenario}"
                 state["events"].appendleft({"time": now_str, "type": "ban", "msg": msg, "data": d})
 
-                if cfg["notify_on_ban"]:
+                if cfg["notify_on_ban"] and not skip_notifications:
                     events_per_min = _calculate_event_rate(60)
                     if events_per_min < cfg["events_per_minute_threshold"]:
                         log.debug("Ban notify suppressed: %s events/min < threshold %s", events_per_min, cfg["events_per_minute_threshold"])
@@ -1296,7 +1304,7 @@ def _do_poll():
                 msg = f"ALERT {ip} scenario={scenario} events={count}"
                 state["events"].appendleft({"time": now_str, "type": "alert", "msg": msg, "data": a})
 
-                if cfg["notify_on_alert"]:
+                if cfg["notify_on_alert"] and not skip_notifications:
                     events_per_min = _calculate_event_rate(60)
                     if events_per_min < cfg["events_per_minute_threshold"]:
                         log.debug("Alert suppressed: %s events/min < threshold %s", events_per_min, cfg["events_per_minute_threshold"])
@@ -1327,6 +1335,9 @@ def _do_poll():
     
     _prune_cooldowns()
     save_state()
+    
+    if skip_notifications:
+        log.debug("Skipped notifications on first poll after startup")
 
 def _find_alert_count(ip, scenario):
     for a in state["alerts"]:
@@ -1519,7 +1530,7 @@ def api_auth_callback():
         
         token_resp = requests.post(token_url, data=token_data, timeout=10)
         if token_resp.status_code != 200:
-            log.error("Token exchange failed: %s - %s", token_resp.status_code, token_resp.text)
+            log.error("Token exchange failed: status=%s", token_resp.status_code)
             return jsonify({"error": "Token exchange failed"}), 401
         
         tokens = token_resp.json()
@@ -1679,6 +1690,8 @@ def api_status():
         "digest_pending":     len(state["digest_buffer"]),
         "next_digest_in":     next_digest,
         "cooldowns_tracked":  len(state["cooldowns"]),
+        "version":            APP_VERSION,
+        "app_version":        APP_VERSION,
     })
 
 @app.route("/api/statistics")
@@ -1746,6 +1759,8 @@ def api_config_patch():
     for key, val in data.items():
         if key not in allowed:
             continue
+        if key in ("alert_threshold", "ban_threshold"):
+            log.warning("Config key '%s' is deprecated; rate-based thresholds (events_per_minute/hour/day) are used instead", key)
         if key in ("alert_threshold", "ban_threshold", "notify_cooldown", "digest_interval",
                    "events_per_minute_threshold", "events_per_hour_threshold", "events_per_day_threshold"):
             val = int(val)

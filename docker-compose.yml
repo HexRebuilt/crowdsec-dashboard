@@ -29,7 +29,8 @@ services:
       DIGEST_INTERVAL: "0"
       # ⚠️ WARNING: UNSECURE=true disables authentication on ALL endpoints.
       # Only use for local development. Never enable in production.
-      UNSECURE: "true"
+      UNSECURE: "false"
+      # Auth is enabled in production; UNSECURE=false ensures all endpoints require authentication
       LOG_LEVEL: "INFO"
     ports:
       - "5000:5000"
