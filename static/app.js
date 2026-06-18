@@ -848,9 +848,13 @@ async function saveConfig() {
     events_per_hour_threshold: parseInt(document.getElementById('events-per-hour').value) || 1000,
     events_per_day_threshold: parseInt(document.getElementById('events-per-day').value) || 10000,
   };
-  
+
   try {
-    await api('/api/config', { method: 'PATCH', body: JSON.stringify(config) });
+    const result = await api('/api/config', { method: 'PATCH', body: JSON.stringify(config) });
+    if (result.config) {
+      state.config = result.config;
+      updateConfigUI();
+    }
     showToast('Settings saved');
   } catch (e) {
     showToast('Failed to save settings', 'error');
@@ -991,13 +995,13 @@ function initDashboard() {
 }
 
 function initAlarms() {
-  loadStatus();
-  loadConfig();
+  loadStatus().catch(e => console.error('Failed to load status:', e));
+  loadConfig().catch(e => console.error('Failed to load config:', e));
   loadAlarms();
-  
+
   setInterval(loadStatus, 30000);
   setInterval(loadAlarms, 30000);
-  
+
   document.getElementById('refresh-alarms')?.addEventListener('click', loadAlarms);
   document.getElementById('alarm-severity-filter')?.addEventListener('change', loadAlarms);
 }
