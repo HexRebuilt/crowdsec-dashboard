@@ -10,9 +10,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app.py .
 COPY static ./static
 
-RUN mkdir -p /var/log/crowdsec-dashboard
-RUN mkdir -p /app/data
-RUN chown -R appuser:appuser /app
+RUN mkdir -p /var/log/crowdsec-dashboard /app/data
+RUN chown -R appuser:appuser /var/log/crowdsec-dashboard /app/data /app
 USER appuser
 
 EXPOSE 5000
