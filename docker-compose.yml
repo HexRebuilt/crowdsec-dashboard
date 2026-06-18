@@ -19,6 +19,7 @@ services:
       - .env
     environment:
       CROWDSEC_URL: http://crowdsec:8080
+      REDIS_URL: redis://redis:6379
       POLL_INTERVAL: "30"
       NOTIFY_ON_BAN: "true"
       NOTIFY_ON_ALERT: "true"

@@ -10,6 +10,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app.py .
 COPY static ./static
 
+RUN mkdir -p /var/log/crowdsec-dashboard
 RUN chown -R appuser:appuser /app
 USER appuser
 
