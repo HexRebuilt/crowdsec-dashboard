@@ -152,7 +152,7 @@ This design keeps the interface focused on actionable items rather than raw data
 
 ```
 crowdsec-dashboard/
-├── app.py                  # Flask backend with auth
+├── main.py                 # Flask backend with auth (renamed from app.py)
 ├── static/
 │   ├── index.html          # Main HTML with login overlay
 │   ├── app.js              # Frontend logic with auth
@@ -264,7 +264,7 @@ pip install -r requirements.txt
 cp .env.example .env
 
 # Run backend
-python app.py
+python main.py
 ```
 
 Open http://localhost:5000

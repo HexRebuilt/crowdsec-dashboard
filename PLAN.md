@@ -75,7 +75,7 @@
 ## Architecture
 
 ```
-├── app.py              # Flask backend with auth
+├── main.py              # Flask backend with auth
 ├── static/
 │   ├── index.html      # Main HTML with login overlay
 │   ├── app.js          # Frontend logic with auth & charts

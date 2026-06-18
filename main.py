@@ -23,6 +23,7 @@ import requests
 import apprise
 from flask import Flask, jsonify, request, send_from_directory, make_response, current_app
 from flask_cors import CORS
+from app.middleware.csrf_protection import csrf_protection
 
 APP_VERSION = os.getenv("APP_VERSION", "dev")
 
@@ -152,6 +153,7 @@ AUTH_ENABLED = AUTH_CREDENTIALS_ENABLED or AUTH_AUTH0_ENABLED
 
 app = Flask(__name__, static_folder="static")
 CORS(app, supports_credentials=True)
+csrf_protection.init_app(app)
 
 # Session configuration
 SESSION_TIMEOUT = int(os.getenv("SESSION_TIMEOUT", "1800"))
@@ -1446,6 +1448,7 @@ def api_auth_config():
 @app.route("/api/auth/login", methods=["POST"])
 @rate_limit
 @ip_whitelist_required
+@csrf_protection.require_csrf
 @audit_logged("auth_login")
 def api_auth_login():
     data = request.get_json(force=True, silent=True) or {}
@@ -1477,7 +1480,7 @@ def api_auth_login():
             token = create_session(username)
             
             response = make_response(jsonify({"ok": True, "username": username}))
-            response.set_cookie("session_token", token, httponly=True, samesite="Lax", max_age=86400)
+            response.set_cookie("session_token", token, httponly=True, samesite="Lax", max_age=86400, path='/', secure=not (current_app.debug or os.getenv('FLASK_ENV') == 'testing'))
             return response
         except Exception as e:
             log.error("Auth0 login error: %s", e)
@@ -1492,7 +1495,7 @@ def api_auth_login():
         if username == AUTH_USERNAME and password == runtime_password:
             token = create_session(username)
             response = make_response(jsonify({"ok": True, "username": username}))
-            response.set_cookie("session_token", token, httponly=True, samesite="Lax", max_age=86400)
+            response.set_cookie("session_token", token, httponly=True, samesite="Lax", max_age=86400, path='/', secure=not (current_app.debug or os.getenv('FLASK_ENV') == 'testing'))
             return response
         
         return jsonify({"error": "Invalid credentials"}), 401
@@ -1502,6 +1505,7 @@ def api_auth_login():
 @app.route("/api/auth/callback", methods=["POST"])
 @rate_limit
 @ip_whitelist_required
+@csrf_protection.require_csrf
 @audit_logged("auth_callback")
 def api_auth_callback():
     data = request.get_json(force=True, silent=True) or {}
@@ -1555,7 +1559,7 @@ def api_auth_callback():
         token = create_session(username)
         
         response = make_response(jsonify({"ok": True, "username": username}))
-        response.set_cookie("session_token", token, httponly=True, samesite="Lax", max_age=86400)
+        response.set_cookie("session_token", token, httponly=True, samesite="Lax", max_age=86400, path='/')
         return response
     except Exception as e:
         log.error("OAuth callback error: %s", e)
@@ -1564,6 +1568,7 @@ def api_auth_callback():
 @app.route("/api/auth/logout", methods=["POST"])
 @rate_limit
 @auth_required
+@csrf_protection.require_csrf
 @audit_logged("auth_logout")
 def api_auth_logout():
     token = get_token_from_request()
@@ -1571,7 +1576,7 @@ def api_auth_logout():
         sessions.pop(token, None)
     
     response = make_response(jsonify({"ok": True}))
-    response.delete_cookie("session_token")
+    response.delete_cookie("session_token", path='/')
     return response
 
 @app.route("/api/auth/check", methods=["GET"])
@@ -1622,6 +1627,7 @@ def api_auth_session_extend():
 @app.route("/api/auth/password", methods=["POST"])
 @rate_limit
 @auth_required
+@csrf_protection.require_csrf
 @audit_logged("auth_password_change")
 def api_auth_change_password():
     if not AUTH_CREDENTIALS_ENABLED or AUTH_AUTH0_ENABLED:
@@ -1750,6 +1756,7 @@ def api_config_get():
 @app.route("/api/config", methods=["PATCH"])
 @rate_limit
 @auth_required
+@csrf_protection.require_csrf
 def api_config_patch():
     data = request.get_json(force=True, silent=True) or {}
     allowed = {"notify_on_ban", "notify_on_alert", "alert_threshold",
@@ -1823,6 +1830,7 @@ def api_alarms():
 @app.route("/api/alarms/<alarm_type>/dismiss", methods=["POST"])
 @rate_limit
 @auth_required
+@csrf_protection.require_csrf
 @audit_logged("api_alarms_dismiss")
 def api_alarms_dismiss(alarm_type):
     now = time.time()
@@ -1986,6 +1994,7 @@ def api_apprise_urls_get():
 @app.route("/api/apprise/urls", methods=["POST"])
 @rate_limit
 @auth_required
+@csrf_protection.require_csrf
 @audit_logged("api_apprise_urls_set")
 def api_apprise_urls_set():
     data = request.get_json(force=True, silent=True) or {}

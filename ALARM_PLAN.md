@@ -49,7 +49,7 @@ Enhance the existing CrowdSec dashboard by implementing a comprehensive alarm se
 
 ## Technical Implementation Details
 
-### Backend Changes (app.py)
+### Backend Changes (main.py)
 ```python
 # New data structures
 class AlarmSeverity(Enum):
@@ -151,7 +151,7 @@ static/
 ```
 
 ### Modified Files
-- `app.py` - Add new alarm endpoints and logic
+- `main.py` - Add new alarm endpoints and logic
 - `static/app.js` - Add alarm state and components
 - `static/index.html` - Add Alarm tab
 - `static/style.css` - Add alarm-specific styles

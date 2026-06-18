@@ -3,7 +3,7 @@
 ## Current State Analysis
 
 The CrowdSec Dashboard is a Flask-based web application with vanilla JavaScript frontend. Key components:
-- `app.py` - Flask backend with basic authentication
+- `main.py` - Flask backend with basic authentication
 - `static/` - Frontend HTML/CSS/JS files
 - Docker deployment with docker-compose
 - Basic authentication (username/password or OIDC)

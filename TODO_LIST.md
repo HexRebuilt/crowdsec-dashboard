@@ -288,7 +288,7 @@ app/
 ```
 
 **Modified Files:**
-- `app.py` - Add new imports and middleware
+- `main.py` - Add new imports and middleware
 - `static/app.js` - Add new features and UI components
 - `static/index.html` - Add new UI elements
 - `static/style.css` - Add new styles
@@ -351,7 +351,7 @@ app/
 ## Deployment Strategy
 
 ### Local Testing
-1. Run application locally with `python app.py`
+1. Run application locally with `python main.py`
 2. Test all new features manually
 3. Verify functionality with test data
 4. Test performance and security

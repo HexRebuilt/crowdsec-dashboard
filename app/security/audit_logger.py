@@ -2,6 +2,7 @@ import logging
 from datetime import datetime
 from typing import Dict, Any
 import json
+from flask import request
 
 class AuditLogger:
     def __init__(self, log_file='audit.log'):
@@ -35,7 +36,7 @@ class AuditLogger:
         self.logger.info(json.dumps(event))
         
         # Also log to console for debugging
-        print(f'AUDIT: {event}')
+        self.logger.info('AUDIT: %s', event)
     
     def log_login(self, user: str, success: bool, ip: str = None):
         self.log_event(

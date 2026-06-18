@@ -15,7 +15,7 @@ def app():
     os.environ['SECRET_KEY'] = 'test-secret-key'
     os.environ['LOG_LEVEL'] = 'DEBUG'
     
-    from app import app as flask_app
+    from main import app as flask_app
     flask_app.config['TESTING'] = True
     flask_app.config['WTF_CSRF_ENABLED'] = False
     flask_app.config['AUTH_ENABLED'] = False  # Default to unsecure for tests

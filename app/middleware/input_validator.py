@@ -162,8 +162,8 @@ class InputValidator:
         self.add_validator(field, validator, error_message)
     
     def add_date_validator(self, field: str):
-        date_regex = r'^\\d{4}-\\d{2}-\\d{2}$'
-def validator(value):
+        date_regex = r'^\d{4}-\d{2}-\d{2}$'
+        def validator(value):
             if not isinstance(value, str):
                 return False
             if not re.match(date_regex, value):
@@ -177,8 +177,8 @@ def validator(value):
         self.add_validator(field, validator, 'Invalid date format (YYYY-MM-DD)')
     
     def add_datetime_validator(self, field: str):
-        datetime_regex = r'^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$'
-def validator(value):
+        datetime_regex = r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$'
+        def validator(value):
             if not isinstance(value, str):
                 return False
             if not re.match(datetime_regex, value):

@@ -1,6 +1,7 @@
 from flask import request, session, jsonify
 from flask_wtf.csrf import CSRFProtect, generate_csrf
 from typing import Callable
+from functools import wraps
 
 class CSRFProtection:
     def __init__(self, app=None):
@@ -29,6 +30,7 @@ class CSRFProtection:
         return generate_csrf()
     
     def require_csrf(self, f):
+        @wraps(f)
         def decorated_function(*args, **kwargs):
             if not self.validate_csrf():
                 return jsonify({

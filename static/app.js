@@ -653,24 +653,31 @@ function updateStatusUI() {
   const decisionsCountEl = document.getElementById('decisions-count');
   if (decisionsCountEl) decisionsCountEl.textContent = s.total_bans || 0;
   
-  document.getElementById('connection-status').innerHTML = `
-    <div class="status-line">
-      <span class="status-label">CrowdSec URL</span>
-      <span class="status-value code">${s.crowdsec_url || '—'}</span>
-    </div>
-    <div class="status-line">
-      <span class="status-label">Apprise Mode</span>
-      <span class="status-value">${s.apprise_mode || '—'}</span>
-    </div>
-    <div class="status-line">
-      <span class="status-label">Apprise Configured</span>
-      <span class="status-value ${s.apprise_configured ? 'connected' : 'error'}">${s.apprise_configured ? 'Yes' : 'No'}</span>
-    </div>
-    <div class="status-line">
-      <span class="status-label">Poll Interval</span>
-      <span class="status-value">${s.poll_interval}s</span>
-    </div>
-  `;
+  const connectionStatus = document.getElementById('connection-status');
+  if (connectionStatus) {
+    connectionStatus.innerHTML = `
+      <div class="status-line">
+        <span class="status-label">CrowdSec URL</span>
+        <span class="status-value code">${s.crowdsec_url || '—'}</span>
+      </div>
+      <div class="status-line">
+        <span class="status-label">Apprise Mode</span>
+        <span class="status-value">${s.apprise_mode || '—'}</span>
+      </div>
+      <div class="status-line">
+        <span class="status-label">Apprise Configured</span>
+        <span class="status-value ${s.apprise_configured ? 'connected' : 'error'}">${s.apprise_configured ? 'Yes' : 'No'}</span>
+      </div>
+      <div class="status-line">
+        <span class="status-label">Poll Interval</span>
+        <span class="status-value">${s.poll_interval}s</span>
+      </div>
+    `;
+    const urlEl = connectionStatus.querySelector('.status-value.code');
+    if (urlEl && s.crowdsec_url) {
+      urlEl.textContent = s.crowdsec_url;
+    }
+  }
   
   document.getElementById('stats-content').innerHTML = `
     <div class="status-line">
@@ -723,7 +730,7 @@ function updateDecisionsUI() {
       <td class="ip-cell">${d.ip || '—'}</td>
       <td onmouseover="showTooltip(event, getScenarioDescription('${d.scenario || ''}'))" onmouseout="hideTooltip()">${d.scenario || '—'}</td>
       <td>${timeAgo(d.created_at)}</td>
-      <td><button class="btn btn-danger btn-sm" onclick="deleteDecision('${d.ip}')">Delete</button></td>
+      <td><button class="btn btn-danger btn-sm" onclick="deleteDecision('${d.ip.replace(/'/g, "\\'")}')">Delete</button></td>
     </tr>
   `).join('');
   
@@ -931,13 +938,30 @@ function updateCharts(stats) {
     }
   });
   
-  legend.innerHTML = labels.map((label, i) => `
-    <div class="legend-item" onmouseover="showTooltip(event, getScenarioDescription('${label}'))" onmouseout="hideTooltip()">
-      <span class="legend-color" style="background:${colors[i % colors.length]}"></span>
-      <span class="legend-label">${label}</span>
-      <span class="legend-value">${values[i]}</span>
-    </div>
-  `).join('');
+  legend.innerHTML = '';
+  labels.forEach((label, i) => {
+    const item = document.createElement('div');
+    item.className = 'legend-item';
+    item.setAttribute('onmouseover', `showTooltip(event, getScenarioDescription('${label.replace(/'/g, "\\'")}'))`);
+    item.setAttribute('onmouseout', 'hideTooltip()');
+
+    const color = document.createElement('span');
+    color.className = 'legend-color';
+    color.style.background = colors[i % colors.length];
+    item.appendChild(color);
+
+    const labelSpan = document.createElement('span');
+    labelSpan.className = 'legend-label';
+    labelSpan.textContent = label;
+    item.appendChild(labelSpan);
+
+    const valueSpan = document.createElement('span');
+    valueSpan.className = 'legend-value';
+    valueSpan.textContent = values[i];
+    item.appendChild(valueSpan);
+
+    legend.appendChild(item);
+  });
 }
 
 function setupTabs() {
