@@ -1945,6 +1945,5 @@ if __name__ == "__main__":
         log.info("Authentication enabled: credentials (password change available)")
     threading.Thread(target=digest_loop, daemon=True).start()
     threading.Thread(target=poll_loop, daemon=True).start()
-    threading.Thread(target=_do_poll, daemon=True).start()
     threading.Thread(target=session_cleanup_loop, daemon=True).start()
     app.run(host="0.0.0.0", port=5000, debug=False)
