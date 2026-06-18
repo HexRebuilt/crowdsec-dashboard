@@ -1,7 +1,5 @@
 FROM python:3.12-slim
 
-RUN useradd --create-home appuser
-
 WORKDIR /app
 
 COPY requirements.txt .
@@ -11,8 +9,6 @@ COPY app.py .
 COPY static ./static
 
 RUN mkdir -p /var/log/crowdsec-dashboard /app/data
-RUN chown -R appuser:appuser /var/log/crowdsec-dashboard /app/data /app
-USER appuser
 
 EXPOSE 5000
 

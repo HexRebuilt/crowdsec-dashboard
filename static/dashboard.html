@@ -202,117 +202,6 @@
           <div id="decisions-pagination" class="pagination"></div>
         </div>
       </section>
-
-      <section id="tab-alarms" class="tab-panel">
-        <div class="section-header">
-          <h2>Action Required <span id="alarms-count" class="count-badge"></span></h2>
-          <div class="alarm-filters">
-            <select id="alarm-severity-filter" class="select-sm">
-              <option value="">All Severities</option>
-              <option value="critical">Critical</option>
-              <option value="warning">Warning</option>
-              <option value="info">Info</option>
-            </select>
-            <button id="refresh-alarms" class="btn btn-sm btn-secondary" title="Refresh">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px">
-                <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/>
-                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-              </svg>
-            </button>
-          </div>
-        </div>
-        <div id="alarms-container" class="alarms-grid">
-          <div id="alarms-empty" class="empty-state">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:48px;height:48px">
-              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-              <polyline points="22 4 12 14.01 9 11.01"/>
-            </svg>
-            <p>No actionable alarms</p>
-            <span class="empty-hint">All systems operating normally</span>
-          </div>
-        </div>
-      </section>
-
-      <section id="tab-settings" class="tab-panel">
-        <div class="settings-grid">
-          <div class="settings-card" id="auth-method-settings">
-            <h3>Authentication Method</h3>
-            <div id="auth-method-content"></div>
-          </div>
-
-          <div class="settings-card" id="auth-settings">
-            <h3>Account</h3>
-            <div id="auth-content"></div>
-          </div>
-
-          <div class="settings-card">
-            <h3>Connection Status</h3>
-            <div id="connection-status"></div>
-          </div>
-
-          <div class="settings-card">
-            <h3>Notifications</h3>
-            <div class="form-field">
-              <label class="switch-label">
-                <span>Notify on Ban</span>
-                <input type="checkbox" id="notify-ban" class="switch">
-              </label>
-            </div>
-            <div class="form-field">
-              <label class="switch-label">
-                <span>Notify on Alert</span>
-                <input type="checkbox" id="notify-alert" class="switch">
-              </label>
-            </div>
-            <div class="form-field">
-              <label>Alert Threshold</label>
-              <input type="number" id="alert-threshold" class="input-field" min="0">
-            </div>
-            <div class="form-field">
-              <label>Ban Threshold</label>
-              <input type="number" id="ban-threshold" class="input-field" min="0">
-            </div>
-            <div class="form-field">
-              <label>Notify Cooldown (seconds)</label>
-              <input type="number" id="notify-cooldown" class="input-field" min="0">
-            </div>
-            <div class="form-field">
-              <label>Events per minute threshold (rate-based)</label>
-              <input type="number" id="events-per-minute" class="input-field" value="100">
-              <small class="settings-hint">Alert when event rate exceeds this many events/minute. Industry standard: 100-500/min for DDoS detection.</small>
-            </div>
-            <div class="form-field">
-              <label>Events per hour threshold</label>
-              <input type="number" id="events-per-hour" class="input-field" value="1000">
-              <small class="settings-hint">Daily threshold for sustained attacks. Industry standard: 1000-10000/hour.</small>
-            </div>
-            <div class="form-field">
-              <label>Events per day threshold</label>
-              <input type="number" id="events-per-day" class="input-field" value="10000">
-              <small class="settings-hint">Maximum daily events before escalation. Industry standard: 10000-100000/day.</small>
-            </div>
-            <div class="btn-row">
-              <button id="save-config" class="btn btn-primary">Save Settings</button>
-              <button id="test-notify" class="btn btn-secondary">Test Notification</button>
-            </div>
-          </div>
-
-          <div class="settings-card">
-            <h3>Apprise Configuration</h3>
-            <div id="apprise-status"></div>
-            <div class="form-field">
-              <label>Notification URLs (comma-separated)</label>
-              <textarea id="apprise-urls" class="input-field textarea" rows="3" placeholder="mailto://user:pass@host, telegram://bot_token/chat_id"></textarea>
-            </div>
-            <button id="save-apprise" class="btn btn-primary">Save Apprise URLs</button>
-          </div>
-
-          <div class="settings-card">
-            <h3>Statistics</h3>
-            <div id="stats-content"></div>
-          </div>
-        </div>
-      </section>
     </main>
   </div>
 
@@ -349,5 +238,10 @@
   <div id="tooltip" class="tooltip hidden"></div>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="/app.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      initDashboard();
+    });
+  </script>
 </body>
 </html>

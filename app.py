@@ -432,6 +432,7 @@ state = {
     "rate_limit_warnings": [],
     "notify_rate_limit_window": [],  # timestamps of recent notifications for rate limiting
     "event_rate_window": [],  # timestamps of recent events for rate calculation
+    "_initial_poll_done": False,
 }
 
 STATE_FILE = os.getenv("STATE_FILE", "/app/data/state.json")
@@ -466,6 +467,7 @@ def save_state():
             "events_per_hour_threshold": cfg.get("events_per_hour_threshold"),
             "events_per_day_threshold": cfg.get("events_per_day_threshold"),
             "event_rate_window": state["event_rate_window"][-1000:],
+            "_initial_poll_done": state.get("_initial_poll_done", False),
         }
         with open(STATE_FILE, "w") as f:
             json.dump(persist, f)
@@ -503,6 +505,7 @@ def load_state():
         cfg["events_per_hour_threshold"] = data.get("events_per_hour_threshold", 1000)
         cfg["events_per_day_threshold"] = data.get("events_per_day_threshold", 10000)
         state["event_rate_window"] = data.get("event_rate_window", [])
+        state["_initial_poll_done"] = data.get("_initial_poll_done", False)
         log.info("State loaded from %s", STATE_FILE)
     except Exception as e:
         log.error("Failed to load state: %s", e)
@@ -663,9 +666,14 @@ def _check_api_connection_errors():
     
     recent_errors = [e for e in state["api_errors"] if e.get("timestamp", 0) > window_start]
     
-    # If we had errors but now healthy for 2 minutes, clear the alarm
-    if (len(recent_errors) >= API_ERROR_THRESHOLD and 
-        state.get("api_error_dismissed", 0) > 0 and
+    # Auto-clear when healthy: below threshold means API is recovering
+    if len(recent_errors) < API_ERROR_THRESHOLD:
+        state["api_errors"] = []
+        state.pop("api_error_dismissed", None)
+        return None
+    
+    # Secondary path: user dismissed and healthy for 2 minutes
+    if (state.get("api_error_dismissed", 0) > 0 and
         now - state["api_error_dismissed"] > 120):
         state["api_errors"] = []
         state.pop("api_error_dismissed", None)
@@ -1210,6 +1218,31 @@ def _do_poll():
     now_str = datetime.now(timezone.utc).isoformat()
     state["last_poll"] = now_str
 
+    if not state.get("_initial_poll_done", False):
+        # First poll after restart: populate state but skip notifications
+        decisions = fetch_decisions()
+        if decisions is not None:
+            state["decisions"] = decisions
+            state["known_decision_ids"] = {str(d.get("id", "")) for d in decisions}
+        alerts = fetch_alerts(since_minutes=120)
+        if alerts is not None:
+            state["alerts"] = alerts[:100]
+            state["known_alert_ids"] = {str(a.get("id", "")) for a in alerts}
+        
+        # Pre-populate alarm state so existing alarms are marked "ongoing" not "new"
+        initial_alarms = _check_all_actionable_alarms()
+        for alarm in initial_alarms:
+            alarm_key = f"{alarm.get('type')}:{alarm.get('message', '')}"
+            state["known_alarm_ids"].add(alarm_key)
+        
+        # Clear startup errors — connection errors during boot are expected
+        state["api_errors"] = []
+        state["rate_limit_warnings"] = []
+        
+        state["_initial_poll_done"] = True
+        save_state()
+        return
+
     decisions = fetch_decisions()
     if decisions is not None:
         new_ids = {str(d.get("id", "")) for d in decisions}
@@ -1229,10 +1262,9 @@ def _do_poll():
                 state["events"].appendleft({"time": now_str, "type": "ban", "msg": msg, "data": d})
 
                 if cfg["notify_on_ban"]:
-                    ban_thr = cfg["ban_threshold"]
-                    event_count = _find_alert_count(ip, scenario)
-                    if ban_thr > 0 and event_count < ban_thr:
-                        log.debug("Ban notify suppressed: %s events < threshold %s", event_count, ban_thr)
+                    events_per_min = _calculate_event_rate(60)
+                    if events_per_min < cfg["events_per_minute_threshold"]:
+                        log.debug("Ban notify suppressed: %s events/min < threshold %s", events_per_min, cfg["events_per_minute_threshold"])
                         state["suppressed_count"] += 1
                     else:
                         if _check_notify_rate_limit():
@@ -1265,9 +1297,9 @@ def _do_poll():
                 state["events"].appendleft({"time": now_str, "type": "alert", "msg": msg, "data": a})
 
                 if cfg["notify_on_alert"]:
-                    thr = cfg["alert_threshold"]
-                    if thr > 0 and count < thr:
-                        log.debug("Alert suppressed: %s events < threshold %s", count, thr)
+                    events_per_min = _calculate_event_rate(60)
+                    if events_per_min < cfg["events_per_minute_threshold"]:
+                        log.debug("Alert suppressed: %s events/min < threshold %s", events_per_min, cfg["events_per_minute_threshold"])
                         state["suppressed_count"] += 1
                     else:
                         if _check_notify_rate_limit():

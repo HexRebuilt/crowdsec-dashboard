@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CrowdSec Dashboard - Alarms</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234f46e5' stroke-width='2'%3E%3Cpath d='M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div id="login-page" class="login-page">
+    <div class="login-container">
+      <div class="login-brand">
+        <div class="login-logo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+        </div>
+        <h1>CrowdSec Dashboard</h1>
+        <p>Sign in to manage your security</p>
+      </div>
+      
+      <form id="login-form" class="login-form">
+        <div class="input-group">
+          <input type="text" id="username" name="username" placeholder="Username" autocomplete="username" required>
+        </div>
+        <div class="input-group">
+          <input type="password" id="password" name="password" placeholder="Password" autocomplete="current-password" required>
+        </div>
+        <button type="submit" id="login-btn" class="login-submit">
+          <span class="btn-text">Sign In</span>
+          <span class="btn-spinner hidden"></span>
+        </button>
+        <div id="login-error" class="login-error hidden"></div>
+      </form>
+      
+      <div id="sso-section" class="sso-section hidden">
+        <div class="divider"><span>or</span></div>
+        <button id="sso-btn" class="sso-btn">Continue with SSO</button>
+      </div>
+    </div>
+    
+    <div class="theme-toggle">
+      <button id="theme-toggle-btn" title="Toggle theme">
+        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="5"/>
+          <line x1="12" y1="1" x2="12" y2="3"/>
+          <line x1="12" y1="21" x2="12" y2="23"/>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+          <line x1="1" y1="12" x2="3" y2="12"/>
+          <line x1="21" y1="12" x2="23" y2="12"/>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+          <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+        </svg>
+        <svg class="icon-moon hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <div id="app" class="app hidden">
+    <header class="app-header">
+      <div class="header-left">
+        <div class="app-logo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+        </div>
+        <h1>CrowdSec Dashboard</h1>
+      </div>
+      <div class="header-right">
+        <div class="status-badge" id="status-badge">
+          <span class="status-dot"></span>
+          <span class="status-text">Connecting...</span>
+        </div>
+        <span id="user-badge" class="user-badge"></span>
+        <button id="theme-toggle-header" class="icon-btn" title="Toggle theme">
+          <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="5"/>
+            <line x1="12" y1="1" x2="12" y2="3"/>
+            <line x1="12" y1="21" x2="12" y2="23"/>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+            <line x1="1" y1="12" x2="3" y2="12"/>
+            <line x1="21" y1="12" x2="23" y2="12"/>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+          </svg>
+          <svg class="icon-moon hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+        </button>
+        <button id="logout-btn" class="icon-btn" title="Sign out">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+            <polyline points="16 17 21 12 16 7"/>
+            <line x1="21" y1="12" x2="9" y2="12"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <nav class="tabs tabs-top">
+      <a href="/dashboard.html" class="tab">Dashboard</a>
+      <a href="/alarms.html" class="tab active">Alarms <span id="alarms-badge" class="badge badge-critical" style="display:none">0</span></a>
+      <a href="/settings.html" class="tab">Settings</a>
+    </nav>
+
+    <main class="main-content">
+      <section id="tab-alarms" class="tab-panel active">
+        <div class="section-header">
+          <h2>Action Required <span id="alarms-count" class="count-badge"></span></h2>
+          <div class="alarm-filters">
+            <select id="alarm-severity-filter" class="select-sm">
+              <option value="">All Severities</option>
+              <option value="critical">Critical</option>
+              <option value="warning">Warning</option>
+              <option value="info">Info</option>
+            </select>
+            <button id="refresh-alarms" class="btn btn-sm btn-secondary" title="Refresh">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px">
+                <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div id="alarms-container" class="alarms-grid">
+          <div id="alarms-empty" class="empty-state">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:48px;height:48px">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+              <polyline points="22 4 12 14.01 9 11.01"/>
+            </svg>
+            <p>No actionable alarms</p>
+            <span class="empty-hint">All systems operating normally</span>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div id="password-modal" class="modal hidden">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>Change Password</h3>
+        <button class="modal-close" id="close-password-modal">&times;</button>
+      </div>
+      <form id="password-form" class="modal-body">
+        <div class="form-field">
+          <label>Current Password</label>
+          <input type="password" id="current-password" class="input-field" required>
+        </div>
+        <div class="form-field">
+          <label>New Password</label>
+          <input type="password" id="new-password" class="input-field" required minlength="8">
+          <small class="field-hint">Minimum 8 characters</small>
+        </div>
+        <div class="form-field">
+          <label>Confirm New Password</label>
+          <input type="password" id="confirm-password" class="input-field" required minlength="8">
+        </div>
+        <div id="password-error" class="error-msg hidden"></div>
+        <div class="btn-row">
+          <button type="button" class="btn btn-secondary" id="cancel-password">Cancel</button>
+          <button type="submit" class="btn btn-primary">Change Password</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+  <div id="tooltip" class="tooltip hidden"></div>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="/app.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      initAlarms();
+    });
+  </script>
+</body>
+</html>

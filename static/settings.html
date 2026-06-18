@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CrowdSec Dashboard</title>
+  <title>CrowdSec Dashboard - Settings</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234f46e5' stroke-width='2'%3E%3Cpath d='M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="/style.css">
 </head>
@@ -103,137 +103,13 @@
     </header>
 
     <nav class="tabs tabs-top">
-      <a href="/dashboard.html" class="tab active">Dashboard</a>
+      <a href="/dashboard.html" class="tab">Dashboard</a>
       <a href="/alarms.html" class="tab">Alarms <span id="alarms-badge" class="badge badge-critical" style="display:none">0</span></a>
-      <a href="/settings.html" class="tab">Settings</a>
+      <a href="/settings.html" class="tab active">Settings</a>
     </nav>
 
     <main class="main-content">
-      <section id="tab-dashboard" class="tab-panel active">
-        <div class="dashboard-grid">
-          <div class="chart-card">
-            <div class="chart-header">
-              <h3>Top Scenarios</h3>
-              <button id="refresh-chart" class="btn btn-sm btn-secondary" title="Refresh chart">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px">
-                  <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/>
-                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-                </svg>
-              </button>
-            </div>
-            <div class="chart-container">
-              <canvas id="chart-scenarios"></canvas>
-            </div>
-            <div class="chart-legend" id="legend-scenarios"></div>
-          </div>
-
-          <div class="stats-sidebar">
-            <div class="stat-card">
-              <div class="stat-icon stat-icon-ban">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="12" r="10"/>
-                  <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
-                </svg>
-              </div>
-              <div class="stat-info">
-                <span class="stat-value" id="stat-bans">0</span>
-                <span class="stat-label">Active Bans</span>
-              </div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-icon stat-icon-alert">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                  <line x1="12" y1="9" x2="12" y2="13"/>
-                  <line x1="12" y1="17" x2="12.01" y2="17"/>
-                </svg>
-              </div>
-              <div class="stat-info">
-                <span class="stat-value" id="stat-alerts">0</span>
-                <span class="stat-label">Alerts</span>
-              </div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-icon stat-icon-sent">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M22 2L11 13"/>
-                  <path d="M22 2L15 22L11 13L2 9L22 2Z"/>
-                </svg>
-              </div>
-              <div class="stat-info">
-                <span class="stat-value" id="stat-sent">0</span>
-                <span class="stat-label">Notifications</span>
-              </div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-icon stat-icon-suppressed">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-                  <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-                  <line x1="1" y1="1" x2="23" y2="23"/>
-                </svg>
-              </div>
-              <div class="stat-info">
-                <span class="stat-value" id="stat-suppressed">0</span>
-                <span class="stat-label">Suppressed</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="decisions-section">
-          <div class="section-header">
-            <h2>Active Bans <span id="decisions-count" class="count-badge"></span></h2>
-            <input type="text" id="decisions-search" class="search-input" placeholder="Search IP...">
-          </div>
-          <div class="table-wrapper">
-            <table>
-              <thead>
-                <tr>
-                  <th>IP</th>
-                  <th>Scenario</th>
-                  <th>When</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody id="decisions-body"></tbody>
-            </table>
-          </div>
-          <div id="decisions-pagination" class="pagination"></div>
-        </div>
-      </section>
-
-      <section id="tab-alarms" class="tab-panel">
-        <div class="section-header">
-          <h2>Action Required <span id="alarms-count" class="count-badge"></span></h2>
-          <div class="alarm-filters">
-            <select id="alarm-severity-filter" class="select-sm">
-              <option value="">All Severities</option>
-              <option value="critical">Critical</option>
-              <option value="warning">Warning</option>
-              <option value="info">Info</option>
-            </select>
-            <button id="refresh-alarms" class="btn btn-sm btn-secondary" title="Refresh">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px">
-                <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/>
-                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-              </svg>
-            </button>
-          </div>
-        </div>
-        <div id="alarms-container" class="alarms-grid">
-          <div id="alarms-empty" class="empty-state">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:48px;height:48px">
-              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-              <polyline points="22 4 12 14.01 9 11.01"/>
-            </svg>
-            <p>No actionable alarms</p>
-            <span class="empty-hint">All systems operating normally</span>
-          </div>
-        </div>
-      </section>
-
-      <section id="tab-settings" class="tab-panel">
+      <section id="tab-settings" class="tab-panel active">
         <div class="settings-grid">
           <div class="settings-card" id="auth-method-settings">
             <h3>Authentication Method</h3>
@@ -263,14 +139,6 @@
                 <span>Notify on Alert</span>
                 <input type="checkbox" id="notify-alert" class="switch">
               </label>
-            </div>
-            <div class="form-field">
-              <label>Alert Threshold</label>
-              <input type="number" id="alert-threshold" class="input-field" min="0">
-            </div>
-            <div class="form-field">
-              <label>Ban Threshold</label>
-              <input type="number" id="ban-threshold" class="input-field" min="0">
             </div>
             <div class="form-field">
               <label>Notify Cooldown (seconds)</label>
@@ -349,5 +217,10 @@
   <div id="tooltip" class="tooltip hidden"></div>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="/app.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      initSettings();
+    });
+  </script>
 </body>
 </html>

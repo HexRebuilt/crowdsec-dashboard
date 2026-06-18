@@ -34,7 +34,7 @@ services:
     ports:
       - "5000:5000"
     volumes:
-      - ./crowdsec-dashboard-data:/app/data
+      - dashboard_state:/app/data
     healthcheck:
       test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:5000/health')"]
       interval: 30s
@@ -44,6 +44,7 @@ services:
 
 volumes:
   redis_data:
+  dashboard_state:
 
 networks:
   traefik_cloudflared_default:

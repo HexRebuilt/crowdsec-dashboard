@@ -1,6 +1,7 @@
 const state = {
   status: {},
   config: {},
+  configLoaded: false,
   decisions: [],
   appriseStatus: {},
   decisionsPage: 1,
@@ -508,6 +509,7 @@ async function loadStatus() {
 async function loadConfig() {
   try {
     state.config = await api('/api/config', { allowAuthFailure: true });
+    state.configLoaded = true;
     updateConfigUI();
   } catch (e) {
     console.error('Failed to load config:', e);
@@ -940,18 +942,53 @@ function updateCharts(stats) {
 }
 
 function setupTabs() {
-  document.querySelectorAll('.tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-      tab.classList.add('active');
-      document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
-      
-      if (tab.dataset.tab === 'alarms') {
-        loadAlarms();
-      }
-    });
+  // Navigation is now link-based for dedicated pages
+  // This function is kept for backward compatibility but does nothing
+  // since each page has its own init function
+}
+
+function initDashboard() {
+  setupSearch();
+  initResizableColumns();
+  
+  loadStatus();
+  loadConfig().then(() => {
+    loadDecisions();
+    loadStatistics();
   });
+  loadAppriseStatus();
+  loadAppriseUrls();
+  loadAuthProviderSettings();
+  
+  setInterval(loadStatus, 30000);
+  setInterval(loadDecisions, 30000);
+  setInterval(loadStatistics, 86400000);
+  
+  document.getElementById('refresh-chart')?.addEventListener('click', loadStatistics);
+}
+
+function initAlarms() {
+  loadStatus();
+  loadConfig();
+  loadAlarms();
+  
+  setInterval(loadStatus, 30000);
+  setInterval(loadAlarms, 30000);
+  
+  document.getElementById('refresh-alarms')?.addEventListener('click', loadAlarms);
+  document.getElementById('alarm-severity-filter')?.addEventListener('change', loadAlarms);
+}
+
+function initSettings() {
+  loadStatus();
+  loadConfig();
+  loadAppriseStatus();
+  loadAppriseUrls();
+  loadAuthProviderSettings();
+  loadStatistics();
+  
+  setInterval(loadStatus, 30000);
+  setInterval(loadStatistics, 86400000);
 }
 
 function setupSearch() {
@@ -967,7 +1004,6 @@ function setupAutoRefresh() {
 }
 
 async function initApp() {
-  setupTabs();
   setupSearch();
   setupAutoRefresh();
   initResizableColumns();
@@ -1149,11 +1185,6 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('cancel-password').addEventListener('click', closePasswordModal);
   
   document.getElementById('sso-btn').addEventListener('click', handleSSOLogin);
-  
-  document.getElementById('refresh-chart').addEventListener('click', loadStatistics);
-  
-  document.getElementById('refresh-alarms')?.addEventListener('click', loadAlarms);
-  document.getElementById('alarm-severity-filter')?.addEventListener('change', loadAlarms);
   
   document.addEventListener('click', (e) => {
     if (e.target.classList.contains('alarm-dismiss')) {
