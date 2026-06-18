@@ -446,8 +446,6 @@ async function checkAuth() {
   } else {
     showApp();
   }
-  
-  await initApp();
 }
 
 function updateAuthMethodSelect() {
