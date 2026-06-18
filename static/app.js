@@ -393,20 +393,24 @@ async function checkAuth() {
   const code = urlParams.get('code');
   
   if (code) {
-    const handled = await handleAuth0Callback(code);
-    if (!handled) {
-      window.location.href = '/';
-    }
+    await handleAuth0Callback(code);
     return;
   }
   
   if (window.location.hash.includes('access_token')) {
-    const handled = await handleAuth0Callback();
-    if (!handled) {
-      window.location.href = '/';
-    }
+    await handleAuth0Callback();
     return;
   }
+  
+  // Set defaults first — ensures state is always initialized
+  state.auth.enabled = false;
+  state.auth.method = null;
+  state.auth.auth0Domain = null;
+  state.auth.auth0ClientId = null;
+  state.auth.auth0AuthorizeUrl = null;
+  state.auth.auth0TokenUrl = null;
+  state.auth.appUrl = null;
+  state.auth.passwordChangeAvailable = false;
   
   try {
     const status = await fetch('/api/auth/status', { credentials: 'include' }).then(r => r.json());
@@ -422,33 +426,27 @@ async function checkAuth() {
     if (status.method === 'auth0' || (status.auth0_domain && status.auth0_client_id)) {
       document.getElementById('sso-section').classList.remove('hidden');
     }
-    
-    updateAuthMethodSelect();
-    
-    if (state.auth.enabled) {
-      loadAuthProviderSettings();
-    }
-    
-    if (!status.enabled) {
-      showApp();
-      await initApp();
-      return;
-    }
-    
+  } catch (e) {
+    console.error('Failed to load auth status:', e);
+  }
+  
+  updateAuthMethodSelect();
+  
+  if (state.auth.enabled) {
     try {
       const check = await api('/api/auth/check');
       state.auth.authenticated = true;
       state.auth.username = check.username;
       showApp();
       document.getElementById('user-badge').textContent = check.username;
-      await initApp();
     } catch (e) {
       showLoginPage();
     }
-  } catch (e) {
+  } else {
     showApp();
-    await initApp();
   }
+  
+  await initApp();
 }
 
 function updateAuthMethodSelect() {

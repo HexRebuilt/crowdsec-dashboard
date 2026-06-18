@@ -25,7 +25,7 @@ from flask import Flask, jsonify, request, send_from_directory, make_response, c
 from flask_cors import CORS
 
 # Redis configuration
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
+REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379")
 REDIS_TIMEOUT = int(os.getenv("REDIS_TIMEOUT", "300"))
 
 # Rate limiting configuration
