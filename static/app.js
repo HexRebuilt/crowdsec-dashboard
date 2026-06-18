@@ -700,7 +700,7 @@ function updateConfigUI() {
   document.getElementById('notify-alert').checked = c.notify_on_alert;
   document.getElementById('alert-threshold').value = c.alert_threshold || 10;
   document.getElementById('ban-threshold').value = c.ban_threshold || 50;
-  document.getElementById('notify-cooldown').value = c.notify_cooldown || 3600;
+  document.getElementById('notify-cooldown').value = c.notify_cooldown ?? 3600;
   
   // Rate-based thresholds
   document.getElementById('events-per-minute').value = c.events_per_minute_threshold || 100;
@@ -838,7 +838,7 @@ async function saveConfig() {
     notify_on_alert: document.getElementById('notify-alert').checked,
     alert_threshold: parseInt(document.getElementById('alert-threshold').value) || 0,
     ban_threshold: parseInt(document.getElementById('ban-threshold').value) || 0,
-    notify_cooldown: parseInt(document.getElementById('notify-cooldown').value) || 0,
+    notify_cooldown: parseInt(document.getElementById('notify-cooldown').value) || 3600,
     events_per_minute_threshold: parseInt(document.getElementById('events-per-minute').value) || 100,
     events_per_hour_threshold: parseInt(document.getElementById('events-per-hour').value) || 1000,
     events_per_day_threshold: parseInt(document.getElementById('events-per-day').value) || 10000,
