@@ -183,7 +183,8 @@ function showLoginPage() {
   document.getElementById('username').value = '';
   document.getElementById('password').value = '';
   
-  if (state.auth.method === 'auth0') {
+  const isSSO = state.auth.method === 'auth0' || (state.auth.auth0Domain && state.auth.auth0ClientId);
+  if (isSSO) {
     document.getElementById('login-form').classList.add('hidden');
     document.getElementById('sso-section').classList.remove('hidden');
   } else {
@@ -329,6 +330,7 @@ async function handleAuth0Callback(code) {
     } catch (e) {
       console.error('Login failed:', e);
       showToast(e.message, 'error');
+      showLoginPage();  // Add this line
       return false;
     }
   }
@@ -402,7 +404,11 @@ async function checkAuth() {
   const code = urlParams.get('code');
   
   if (code) {
-    await handleAuth0Callback(code);
+    const success = await handleAuth0Callback(code);
+    if (!success) {
+      // Callback failed — show login page with SSO button
+      showLoginPage();
+    }
     return;
   }
   
@@ -458,6 +464,7 @@ async function checkAuth() {
 
 function updateAuthMethodSelect() {
   const card = document.getElementById('auth-method-settings');
+  if (!card) return;  // Only run on settings page
   
   if (!state.auth.enabled) {
     card.style.display = 'block';
