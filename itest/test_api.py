@@ -61,6 +61,22 @@ class TestAlarmsEndpoint:
             assert 'message' in alarm
 
 
+    def test_alarms_with_null_dismissed_fields_does_not_crash(self, client):
+        from main import state, _check_manual_review_alerts, _check_whitelist_expiry, _check_api_connection_errors
+        state["manual_review_dismissed"] = None
+        state["whitelist_expiry_dismissed"] = None
+        state["api_error_dismissed"] = None
+        state["alerts"] = []
+        state["whitelist_expiry"] = {}
+        state["api_errors"] = []
+        result = _check_manual_review_alerts(state["alerts"])
+        assert result is None or isinstance(result, dict)
+        result = _check_whitelist_expiry()
+        assert result is None or isinstance(result, dict)
+        result = _check_api_connection_errors()
+        assert result is None or isinstance(result, dict)
+
+
 class TestConfigEndpoint:
     def test_config_endpoint_exists(self, client):
         response = client.get('/api/config')

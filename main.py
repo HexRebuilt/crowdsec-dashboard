@@ -495,9 +495,9 @@ def load_state():
         state["whitelist_expiry"] = data.get("whitelist_expiry", {})
         state["rate_limit_warnings"] = data.get("rate_limit_warnings", [])
         state["notify_rate_limit_window"] = data.get("notify_rate_limit_window", [])
-        state["manual_review_dismissed"] = data.get("manual_review_dismissed")
-        state["whitelist_expiry_dismissed"] = data.get("whitelist_expiry_dismissed")
-        state["api_error_dismissed"] = data.get("api_error_dismissed")
+        state["manual_review_dismissed"] = data.get("manual_review_dismissed") or 0
+        state["whitelist_expiry_dismissed"] = data.get("whitelist_expiry_dismissed") or 0
+        state["api_error_dismissed"] = data.get("api_error_dismissed") or 0
         state["last_digest_sent"] = data.get("last_digest_sent", time.time())
         cfg["apprise_urls"] = data.get("apprise_urls", "")
         cfg["notify_on_ban"] = data.get("notify_on_ban", True)
@@ -616,7 +616,7 @@ def _check_manual_review_alerts(alerts):
     events_per_min = _calculate_event_rate(60)
 
     # Respect dismissal
-    if state.get("manual_review_dismissed", 0) > 0:
+    if (state.get("manual_review_dismissed") or 0) > 0:
         dismissed_at = state["manual_review_dismissed"]
         if time.time() - dismissed_at < 3600:
             return None
@@ -689,7 +689,7 @@ def _check_api_connection_errors():
         return None
     
     # Secondary path: user dismissed and healthy for 2 minutes
-    if (state.get("api_error_dismissed", 0) > 0 and
+    if ((state.get("api_error_dismissed") or 0) > 0 and
         now - state["api_error_dismissed"] > 120):
         state["api_errors"] = []
         state.pop("api_error_dismissed", None)
@@ -756,7 +756,7 @@ def _check_whitelist_expiry():
     now_ts = time.time()
 
     # Respect dismissal
-    if state.get("whitelist_expiry_dismissed", 0) > 0:
+    if (state.get("whitelist_expiry_dismissed") or 0) > 0:
         if now_ts - state["whitelist_expiry_dismissed"] < 3600:
             return None
         else:
