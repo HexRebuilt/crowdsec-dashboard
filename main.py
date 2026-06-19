@@ -1279,6 +1279,11 @@ def _do_poll():
         state["decisions"] = decisions
         state["known_decision_ids"] = new_ids
 
+        # Record events for rate calculation BEFORE notification checks
+        if decisions:
+            for d in decisions:
+                _record_event()
+
         for d in decisions:
             if str(d.get("id", "")) in added:
                 ip       = d.get("value", "?")
@@ -1315,6 +1320,11 @@ def _do_poll():
         new_alert_ids = {str(a.get("id", "")) for a in alerts}
         added_alerts  = new_alert_ids - state["known_alert_ids"]
 
+        # Record events for rate calculation BEFORE notification checks
+        if alerts:
+            for a in alerts:
+                _record_event()
+
         for a in alerts:
             if str(a.get("id", "")) in added_alerts:
                 scenario = a.get("scenario", "?")
@@ -1343,15 +1353,7 @@ def _do_poll():
         state["alerts"] = alerts[:100]
 
     state["metrics"] = fetch_metrics()
-    
-    # Record events for rate calculation
-    if decisions:
-        for d in decisions:
-            _record_event()
-    if alerts:
-        for a in alerts:
-            _record_event()
-    
+
     _prune_cooldowns()
     save_state()
     
