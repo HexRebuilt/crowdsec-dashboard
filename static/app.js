@@ -311,11 +311,16 @@ async function handleAuth0Callback(code) {
         body: JSON.stringify({ code: code, redirect_uri: redirectUri })
       });
       
-      const data = await res.json();
-      
       if (!res.ok) {
-        throw new Error(data.error || 'Login failed');
+        let errMsg = `HTTP ${res.status}`;
+        try {
+          const errData = await res.json();
+          errMsg = errData.error || errMsg;
+        } catch (_) {}
+        throw new Error(errMsg);
       }
+      
+      const data = await res.json();
       
       console.log('Login successful, username:', data.username);
       state.auth.authenticated = true;
