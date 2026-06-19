@@ -154,7 +154,6 @@ AUTH_ENABLED = AUTH_CREDENTIALS_ENABLED or AUTH_AUTH0_ENABLED
 app = Flask(__name__, static_folder="static")
 app.config['SECRET_KEY'] = CSRF_SECRET_KEY
 CORS(app, supports_credentials=True)
-csrf_protection.init_app(app)
 
 # Session configuration
 SESSION_TIMEOUT = int(os.getenv("SESSION_TIMEOUT", "1800"))
