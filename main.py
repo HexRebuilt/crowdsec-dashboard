@@ -1521,6 +1521,7 @@ def api_auth_callback():
     if not token_url:
         return jsonify({"error": "Token endpoint not found in OIDC config"}), 400
     
+    # Step 1: Exchange code for tokens
     try:
         token_data = {
             "grant_type": "authorization_code",
@@ -1532,36 +1533,70 @@ def api_auth_callback():
         
         token_resp = requests.post(token_url, data=token_data, timeout=10)
         if token_resp.status_code != 200:
-            log.error("Token exchange failed: status=%s", token_resp.status_code)
-            return jsonify({"error": "Token exchange failed"}), 401
+            log.error("Token exchange failed: status=%s body=%s", token_resp.status_code, token_resp.text[:500])
+            return jsonify({"error": f"Token exchange failed (HTTP {token_resp.status_code})"}), 401
         
-        tokens = token_resp.json()
+        try:
+            tokens = token_resp.json()
+        except Exception:
+            log.error("Token exchange returned non-JSON: %s", token_resp.text[:500])
+            return jsonify({"error": "Token endpoint returned invalid response"}), 502
+        
         access_token = tokens.get("access_token")
         if not access_token:
             return jsonify({"error": "No access token in response"}), 400
-        
-        userinfo_url = oidc.get("userinfo_endpoint")
-        if not userinfo_url:
-            return jsonify({"error": "Userinfo endpoint not found"}), 400
-        
+    except requests.ConnectionError as e:
+        log.error("Token endpoint connection error: %s", e)
+        return jsonify({"error": "Cannot reach token endpoint"}), 502
+    except requests.Timeout as e:
+        log.error("Token endpoint timeout: %s", e)
+        return jsonify({"error": "Token endpoint timed out"}), 504
+    except Exception as e:
+        log.error("Token exchange error: %s", e)
+        return jsonify({"error": f"Token exchange error: {e}"}), 500
+    
+    # Step 2: Fetch user info
+    userinfo_url = oidc.get("userinfo_endpoint")
+    if not userinfo_url:
+        return jsonify({"error": "Userinfo endpoint not found"}), 400
+    
+    try:
         userinfo = requests.get(
             userinfo_url,
             headers={"Authorization": f"Bearer {access_token}"},
             timeout=10
         )
         if userinfo.status_code != 200:
-            return jsonify({"error": "Failed to fetch user info"}), 401
+            log.error("Userinfo fetch failed: status=%s body=%s", userinfo.status_code, userinfo.text[:500])
+            return jsonify({"error": f"Failed to fetch user info (HTTP {userinfo.status_code})"}), 401
         
-        user_data = userinfo.json()
+        try:
+            user_data = userinfo.json()
+        except Exception:
+            log.error("Userinfo returned non-JSON: %s", userinfo.text[:500])
+            return jsonify({"error": "Userinfo endpoint returned invalid response"}), 502
+        
         username = user_data.get("email") or user_data.get("sub", "user")
+    except requests.ConnectionError as e:
+        log.error("Userinfo connection error: %s", e)
+        return jsonify({"error": "Cannot reach userinfo endpoint"}), 502
+    except requests.Timeout as e:
+        log.error("Userinfo timeout: %s", e)
+        return jsonify({"error": "Userinfo endpoint timed out"}), 504
+    except Exception as e:
+        log.error("Userinfo fetch error: %s", e)
+        return jsonify({"error": f"Userinfo fetch error: {e}"}), 500
+    
+    # Step 3: Create session
+    try:
         token = create_session(username)
         
         response = make_response(jsonify({"ok": True, "username": username}))
         response.set_cookie("session_token", token, httponly=True, samesite="Lax", max_age=86400, path='/', secure=not (current_app.debug or os.getenv('FLASK_ENV') == 'testing'))
         return response
     except Exception as e:
-        log.error("OAuth callback error: %s", e)
-        return jsonify({"error": str(e)}), 500
+        log.error("Session creation error: %s", e)
+        return jsonify({"error": f"Session creation failed: {e}"}), 500
 
 @app.route("/api/auth/logout", methods=["POST"])
 @rate_limit
