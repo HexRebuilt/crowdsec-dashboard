@@ -71,6 +71,33 @@ class TestConfigEndpoint:
         data = json.loads(response.data)
         assert isinstance(data, dict)
 
+    def test_config_patch_notify_cooldown(self, client):
+        response = client.patch('/api/config',
+                                json={'notify_cooldown': 1800},
+                                content_type='application/json')
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data['ok'] is True
+        assert data['config']['notify_cooldown'] == 1800
+
+    def test_config_patch_notify_cooldown_zero(self, client):
+        response = client.patch('/api/config',
+                                json={'notify_cooldown': 0},
+                                content_type='application/json')
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data['ok'] is True
+        assert data['config']['notify_cooldown'] == 0
+
+    def test_config_patch_events_per_minute_threshold(self, client):
+        response = client.patch('/api/config',
+                                json={'events_per_minute_threshold': 50},
+                                content_type='application/json')
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data['ok'] is True
+        assert data['config']['events_per_minute_threshold'] == 50
+
 
 class TestStatisticsEndpoint:
     def test_statistics_endpoint_exists(self, client):
