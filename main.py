@@ -614,6 +614,14 @@ def _check_new_attack_sources(decisions):
 def _check_manual_review_alerts(alerts):
     review_needed = []
     events_per_min = _calculate_event_rate(60)
+
+    # Respect dismissal
+    if state.get("manual_review_dismissed", 0) > 0:
+        dismissed_at = state["manual_review_dismissed"]
+        if time.time() - dismissed_at < 3600:
+            return None
+        else:
+            state.pop("manual_review_dismissed", None)
     
     for a in alerts:
         scenario = a.get("scenario", "")
@@ -745,6 +753,15 @@ def _check_rate_limit_warnings():
     return None
 
 def _check_whitelist_expiry():
+    now_ts = time.time()
+
+    # Respect dismissal
+    if state.get("whitelist_expiry_dismissed", 0) > 0:
+        if now_ts - state["whitelist_expiry_dismissed"] < 3600:
+            return None
+        else:
+            state.pop("whitelist_expiry_dismissed", None)
+
     expiring = []
     now = datetime.now(timezone.utc)
     expiry_threshold = now + timedelta(days=WHITELIST_EXPIRY_DAYS)
@@ -1800,7 +1817,7 @@ def api_config_patch():
             log.warning("Config key '%s' is deprecated; rate-based thresholds (events_per_minute/hour/day) are used instead", key)
         if key in ("alert_threshold", "ban_threshold", "notify_cooldown", "digest_interval",
                    "events_per_minute_threshold", "events_per_hour_threshold", "events_per_day_threshold"):
-            val = int(val)
+            val = int(val) if val is not None else cfg.get(key, 0)
         elif key in ("notify_on_ban", "notify_on_alert"):
             val = bool(val)
         cfg[key] = val
@@ -1897,7 +1914,8 @@ def api_alarms_dismiss(alarm_type):
     
     elif alarm_type == ActionableAlarmType.RATE_LIMIT_WARNING:
         state["rate_limit_warnings"] = []
-    
+
+    save_state()
     return jsonify({"ok": True})
 
 @app.route("/api/alarms/failed-logins", methods=["POST"])

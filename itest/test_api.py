@@ -1,5 +1,6 @@
 import pytest
 import json
+import time
 
 
 class TestHealthEndpoint:
@@ -192,3 +193,62 @@ class TestAuthCheckEndpoint:
     def test_auth_check_requires_auth(self, client):
         response = client.get('/api/auth/check')
         assert response.status_code == 200
+
+
+class TestAlarmDismiss:
+    def test_dismiss_manual_review_clears_alarm(self, client):
+        """Dismissing manual_review alarm should suppress it from subsequent polls."""
+        from main import state, _check_all_actionable_alarms
+        state["alerts"] = [{
+            "id": 1,
+            "scenario": "test_scenario",
+            "source": {"ip": "1.2.3.4"},
+            "events_count": 100,
+        }]
+        state["manual_review_dismissed"] = 0
+        state["event_rate_window"] = [time.time()] * 101
+        alarms_before = _check_all_actionable_alarms()
+        manual_before = [a for a in alarms_before if a.get("type") == "manual_review"]
+        assert len(manual_before) > 0, "Expected manual_review alarm before dismiss"
+        response = client.post('/api/alarms/manual_review/dismiss')
+        assert response.status_code == 200
+        alarms_after = _check_all_actionable_alarms()
+        manual_after = [a for a in alarms_after if a.get("type") == "manual_review"]
+        assert len(manual_after) == 0, "Manual review alarm should be suppressed after dismiss"
+
+    def test_dismiss_whitelist_expiry_clears_alarm(self, client):
+        """Dismissing whitelist_expiry alarm should suppress it from subsequent polls."""
+        from main import state, _check_whitelist_expiry
+        from datetime import datetime, timezone, timedelta
+        soon = (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()
+        state["whitelist_expiry"] = {
+            "1.2.3.4": {"expires": soon, "reason": "test"}
+        }
+        state["whitelist_expiry_dismissed"] = 0
+        alarm_before = _check_whitelist_expiry()
+        assert alarm_before is not None, "Expected whitelist_expiry alarm before dismiss"
+        response = client.post('/api/alarms/whitelist_expiry/dismiss')
+        assert response.status_code == 200
+        alarm_after = _check_whitelist_expiry()
+        assert alarm_after is None, "Whitelist expiry alarm should be suppressed after dismiss"
+
+
+class TestConfigRobustness:
+    def test_config_patch_notify_cooldown_null_does_not_crash(self, client):
+        """Sending null for notify_cooldown should not crash (returns 200, keeps default)."""
+        response = client.patch('/api/config',
+                                json={'notify_cooldown': None},
+                                content_type='application/json')
+        assert response.status_code == 200, f"Expected 200 but got {response.status_code}: {response.data}"
+        data = json.loads(response.data)
+        assert data['ok'] is True
+        assert data['config']['notify_cooldown'] is not None
+
+    def test_config_has_notify_cooldown_default(self, client):
+        """Config should include notify_cooldown with a sensible default."""
+        response = client.get('/api/config')
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert 'notify_cooldown' in data
+        assert isinstance(data['notify_cooldown'], int)
+        assert data['notify_cooldown'] >= 0
