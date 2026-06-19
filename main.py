@@ -152,6 +152,7 @@ AUTH_AUTH0_ENABLED = bool(AUTH0_DOMAIN and AUTH0_CLIENT_ID)
 AUTH_ENABLED = AUTH_CREDENTIALS_ENABLED or AUTH_AUTH0_ENABLED
 
 app = Flask(__name__, static_folder="static")
+app.config['SECRET_KEY'] = CSRF_SECRET_KEY
 CORS(app, supports_credentials=True)
 csrf_protection.init_app(app)
 
