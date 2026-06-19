@@ -244,6 +244,16 @@ class TestConfigRobustness:
         assert data['ok'] is True
         assert data['config']['notify_cooldown'] is not None
 
+    def test_config_patch_notify_cooldown_empty_string_does_not_crash(self, client):
+        """Sending empty string for notify_cooldown should not crash (returns 200, keeps default)."""
+        response = client.patch('/api/config',
+                                json={'notify_cooldown': ''},
+                                content_type='application/json')
+        assert response.status_code == 200, f"Expected 200 but got {response.status_code}: {response.data}"
+        data = json.loads(response.data)
+        assert data['ok'] is True
+        assert data['config']['notify_cooldown'] is not None
+
     def test_config_has_notify_cooldown_default(self, client):
         """Config should include notify_cooldown with a sensible default."""
         response = client.get('/api/config')

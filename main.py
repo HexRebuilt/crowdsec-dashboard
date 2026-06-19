@@ -1817,7 +1817,7 @@ def api_config_patch():
             log.warning("Config key '%s' is deprecated; rate-based thresholds (events_per_minute/hour/day) are used instead", key)
         if key in ("alert_threshold", "ban_threshold", "notify_cooldown", "digest_interval",
                    "events_per_minute_threshold", "events_per_hour_threshold", "events_per_day_threshold"):
-            val = int(val) if val is not None else cfg.get(key, 0)
+            val = int(val) if val is not None and val != "" else cfg.get(key, 0)
         elif key in ("notify_on_ban", "notify_on_alert"):
             val = bool(val)
         cfg[key] = val
