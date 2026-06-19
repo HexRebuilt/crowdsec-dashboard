@@ -999,13 +999,13 @@ function initDashboard() {
   initResizableColumns();
   
   loadStatus();
-  loadConfig().then(() => {
+  loadConfig().catch(e => console.error('Failed to load config:', e)).then(() => {
     loadDecisions();
     loadStatistics();
   });
-  loadAppriseStatus();
-  loadAppriseUrls();
-  loadAuthProviderSettings();
+  loadAppriseStatus().catch(e => console.error('Failed to load apprise status:', e));
+  loadAppriseUrls().catch(e => console.error('Failed to load apprise urls:', e));
+  loadAuthProviderSettings().catch(e => console.error('Failed to load auth provider settings:', e));
   
   setInterval(loadStatus, 30000);
   setInterval(loadDecisions, 30000);

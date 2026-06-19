@@ -9,6 +9,9 @@ COPY main.py .
 COPY app ./app
 COPY static ./static
 
+ARG APP_VERSION=dev
+ENV APP_VERSION=$APP_VERSION
+
 RUN mkdir -p /var/log/crowdsec-dashboard /app/data
 
 EXPOSE 5000
