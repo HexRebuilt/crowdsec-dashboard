@@ -249,6 +249,21 @@ class TestAlarmDismiss:
         assert alarm_after is None, "Whitelist expiry alarm should be suppressed after dismiss"
 
 
+    def test_event_rate_not_inflated_by_existing_decisions(self, client):
+        """Re-polling existing decisions should not inflate event rate."""
+        from main import state, _calculate_event_rate, _record_event
+        state["decisions"] = [{"id": i, "value": "1.2.3.4", "scenario": "test"} for i in range(100)]
+        state["known_decision_ids"] = {str(i) for i in range(100)}
+        state["event_rate_window"] = []
+        new_ids = state["known_decision_ids"]
+        added = new_ids - state["known_decision_ids"]
+        for d in state["decisions"]:
+            if str(d.get("id", "")) in added:
+                _record_event()
+        rate = _calculate_event_rate(60)
+        assert rate == 0, f"Expected 0 events/min for re-poll, got {rate}"
+
+
 class TestConfigRobustness:
     def test_config_patch_notify_cooldown_null_does_not_crash(self, client):
         """Sending null for notify_cooldown should not crash (returns 200, keeps default)."""
