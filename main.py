@@ -43,7 +43,7 @@ AUDIT_LOG_ENABLED = os.getenv("AUDIT_LOG_ENABLED", "true").lower() == "true"
 AUDIT_LOG_FILE = os.getenv("AUDIT_LOG_FILE", "/var/log/crowdsec-dashboard/audit.log")
 
 # Boot-time config (from env)
-CROWDSEC_URL       = os.getenv("CROWDSEC_URL", "http://crowdsec:8080")
+CROWDSEC_URL       = os.getenv("CROWDSEC_URL", "https://crowdsec:8080")
 CROWDSEC_API_KEY   = os.getenv("CROWDSEC_API_KEY", "")
 CROWDSEC_LOGIN     = os.getenv("CROWDSEC_LOGIN", "")
 CROWDSEC_PASSWORD  = os.getenv("CROWDSEC_PASSWORD", "")
@@ -65,7 +65,7 @@ AUTH0_CLIENT_ID    = os.getenv("AUTH0_CLIENT_ID", "")
 AUTH0_CLIENT_SECRET = os.getenv("AUTH0_CLIENT_SECRET", "")
 
 AUTH_PASSWORD_FILE = "/app/.auth_password"
-DEFAULT_PASSWORDS = ["", "admin", "password", "changeme", "default", "secret", "123456", "admin123", "your_secure_password_here"]
+DEFAULT_PASSWORDS = ["", "admin", "password", "changeme", "default", "secret", "123456", "admin123"]
 APP_URL = os.getenv("APP_URL", "")
 
 oidc_config = {}
@@ -112,7 +112,7 @@ def load_runtime_password():
         try:
             with open(AUTH_PASSWORD_FILE, "r") as f:
                 return f.read().strip()
-        except:
+        except OSError:
             pass
     return None
 
@@ -123,7 +123,7 @@ def save_runtime_password(password):
         os.chmod(AUTH_PASSWORD_FILE, 0o600)
         return True
     except Exception as e:
-        log.error("Failed to save password: %s", e)
+        log.error("Failed to save password")
         return False
 
 def initialize_password():
@@ -780,9 +780,9 @@ def _check_whitelist_expiry():
                         expiring.append({
                             "ip": ip,
                             "expires": expiry_info.get("expires"),
-                            "reason": expiry_info.get("reason", "manual"),
+                                "reason": expiry_info.get("reason", "manual"),
                         })
-                except:
+                except (ValueError, TypeError):
                     pass
     
     if expiring:
@@ -1117,7 +1117,7 @@ def fetch_decisions():
                         if seconds > 0:
                             created_dt = now - timedelta(seconds=seconds)
                             created_at = created_dt.isoformat()
-                    except:
+                    except (ValueError, TypeError):
                         pass
                 if not created_at and until_str:
                     try:
@@ -1127,7 +1127,7 @@ def fetch_decisions():
                             if seconds > 0:
                                 created_dt = until_dt - timedelta(seconds=seconds)
                                 created_at = created_dt.isoformat()
-                    except:
+                    except (ValueError, TypeError):
                         pass
                 transformed.append({
                     "id": d.get("id"),
@@ -1552,13 +1552,13 @@ def api_auth_callback():
         
         token_resp = requests.post(token_url, data=token_data, timeout=10)
         if token_resp.status_code != 200:
-            log.error("Token exchange failed: status=%s body=%s", token_resp.status_code, token_resp.text[:500])
+            log.error("Token exchange failed: status=%s", token_resp.status_code)
             return jsonify({"error": f"Token exchange failed (HTTP {token_resp.status_code})"}), 401
         
         try:
             tokens = token_resp.json()
         except Exception:
-            log.error("Token exchange returned non-JSON: %s", token_resp.text[:500])
+            log.error("Token exchange returned non-JSON: status=%s", token_resp.status_code)
             return jsonify({"error": "Token endpoint returned invalid response"}), 502
         
         access_token = tokens.get("access_token")
@@ -2131,8 +2131,8 @@ def health_check():
 @audit_logged("api_unban")
 def api_unban():
     decision_id = request.args.get("id")
-    if not decision_id:
-        return jsonify({"error": "id required"}), 400
+    if not decision_id or not str(decision_id).isdigit():
+        return jsonify({"error": "valid numeric id required"}), 400
     try:
         r = requests.delete(
             f"{CROWDSEC_URL}/v1/decisions/{decision_id}",
@@ -2203,4 +2203,4 @@ if __name__ == "__main__":
     threading.Thread(target=digest_loop, daemon=True).start()
     threading.Thread(target=poll_loop, daemon=True).start()
     threading.Thread(target=session_cleanup_loop, daemon=True).start()
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    app.run(host=os.getenv("BIND_HOST", "127.0.0.1"), port=5000, debug=False)
